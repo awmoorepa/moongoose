@@ -2,9 +2,9 @@ import enum
 import sys
 from typing import TextIO
 
-import amarrays
-import ambasic
-import amcsv
+import datset.amarrays as arr
+import datset.ambasic as bas
+import datset.amcsv as csv
 import requests
 
 
@@ -40,16 +40,16 @@ class Column:
     def assert_ok(self):
         assert isinstance(self.m_coltype, Coltype)
         if self.m_coltype == Coltype.bool:
-            assert isinstance(self.m_list, amarrays.Bools)
+            assert isinstance(self.m_list, arr.Bools)
             self.m_list.assert_ok()
         elif self.m_coltype == Coltype.float:
-            assert isinstance(self.m_list, amarrays.Floats)
+            assert isinstance(self.m_list, arr.Floats)
             self.m_list.assert_ok()
         elif self.m_coltype == Coltype.string:
-            assert isinstance(self.m_list, amarrays.Strings)
+            assert isinstance(self.m_list, arr.Strings)
             self.m_list.assert_ok()
         else:
-            ambasic.my_error("bad column type")
+            bas.my_error("bad column type")
 
     def num_rows(self) -> int:
         return self.m_list.len()
@@ -66,15 +66,15 @@ class Column:
     def coltype(self) -> Coltype:
         return self.m_coltype
 
-    def strings(self) -> amarrays.Strings:
+    def strings(self) -> arr.Strings:
         assert self.coltype() == Coltype.string
         return self.m_list
 
-    def floats(self) -> amarrays.Floats:
+    def floats(self) -> arr.Floats:
         assert self.coltype() == Coltype.float
         return self.m_list
 
-    def bools(self) -> amarrays.Bools:
+    def bools(self) -> arr.Bools:
         assert self.coltype() == Coltype.bool
         return self.m_list
 
@@ -118,8 +118,8 @@ class Colnames:
     def contains_duplicates(self) -> bool:
         return self.strings().contains_duplicates()
 
-    def strings(self) -> amarrays.Strings:
-        result = amarrays.strings_empty()
+    def strings(self) -> arr.Strings:
+        result = arr.strings_empty()
         for i in range(0, self.len()):
             result.add(self.string(i))
         return result
@@ -188,8 +188,8 @@ class Datset:
     def pretty_string(self) -> str:
         return self.strings_array().pretty_string()
 
-    def strings_array(self) -> amarrays.StringsArray:
-        result = amarrays.strings_array_empty()
+    def strings_array(self) -> arr.StringsArray:
+        result = arr.strings_array_empty()
         result.add(self.colnames().strings())
         for r in range(0, self.num_rows()):
             result.add(self.row_as_strings(r))
@@ -203,8 +203,8 @@ class Datset:
     def num_cols(self) -> int:
         return self.colnames().len()
 
-    def row_as_strings(self, r: int) -> amarrays.Strings:
-        result = amarrays.strings_empty()
+    def row_as_strings(self, r: int) -> arr.Strings:
+        result = arr.strings_empty()
         for c in range(0, self.num_cols()):
             result.add(self.value_as_string(r, c))
         return result
@@ -231,7 +231,7 @@ class Datset:
     def colname(self, c: int) -> Colname:
         return self.named_column(c).colname()
 
-    def subcols_from_ints(self, cs: amarrays.Ints):  # returns Datset
+    def subcols_from_ints(self, cs: arr.Ints):  # returns Datset
         ds = datset_empty()
         for i in range(0, cs.len()):
             ds.add(self.named_column(cs.int(i)))
@@ -242,12 +242,12 @@ class Datset:
         assert ok
         return self.subcols_from_ints(cis)
 
-    def colids_from_colnames(self, cns: Colnames) -> tuple[amarrays.Ints, bool]:
-        result = amarrays.ints_empty()
+    def colids_from_colnames(self, cns: Colnames) -> tuple[arr.Ints, bool]:
+        result = arr.ints_empty()
         for i in range(0, cns.len()):
             i, ok = self.colid_from_colname(cns.colname(i))
             if not ok:
-                return amarrays.ints_empty(), False
+                return arr.ints_empty(), False
             result.add(i)
         return result, True
 
@@ -298,25 +298,25 @@ def is_legal_filename(f_name: str) -> bool:
     return len(f_name) > 0
 
 
-def filename_default()->Filename:
+def filename_default() -> Filename:
     return Filename("default.txt")
 
 
-def filename_from_string(f_name: str) -> tuple[Filename, ambasic.Errmess]:
+def filename_from_string(f_name: str) -> tuple[Filename, bas.Errmess]:
     if is_legal_filename(f_name):
-        return Filename(f_name), ambasic.errmess_ok()
+        return Filename(f_name), bas.errmess_ok()
     else:
-        return filename_default(), ambasic.errmess_error(f"{f_name} is not a legal filename")
+        return filename_default(), bas.errmess_error(f"{f_name} is not a legal filename")
 
 
 class RowIndexedSmat:
-    def __init__(self, first_row: amarrays.Strings):
+    def __init__(self, first_row: arr.Strings):
         self.m_row_to_col_to_string = []
         self.m_row_to_col_to_string.append(first_row)
         self.assert_ok()
 
     def assert_ok(self):
-        assert amarrays.is_list_of_instances_of_strings_class(self.m_row_to_col_to_string)
+        assert arr.is_list_of_instances_of_strings_class(self.m_row_to_col_to_string)
         assert self.num_rows() > 0
         assert self.num_cols() > 0
 
@@ -324,9 +324,9 @@ class RowIndexedSmat:
         assert self.num_rows() > 0
         return self.m_row_to_col_to_string[0].len()
 
-    def column(self, c: int) -> amarrays.Strings:
+    def column(self, c: int) -> arr.Strings:
         assert 0 <= c < self.num_cols()
-        result = amarrays.strings_empty()
+        result = arr.strings_empty()
         for r in range(0, self.num_rows()):
             result.add(self.string(r, c))
         return result
@@ -334,7 +334,7 @@ class RowIndexedSmat:
     def num_rows(self) -> int:
         return len(self.m_row_to_col_to_string)
 
-    def add(self, ss: amarrays.Strings):
+    def add(self, ss: arr.Strings):
         assert self.num_cols() == ss.len()
         self.m_row_to_col_to_string.append(ss)
 
@@ -343,7 +343,7 @@ class RowIndexedSmat:
         assert 0 <= c < self.num_cols()
         return self.m_row_to_col_to_string[r].string(c)
 
-    def strings_from_row(self, r: int) -> amarrays.Strings:
+    def strings_from_row(self, r: int) -> arr.Strings:
         assert 0 <= r < self.num_rows()
         return self.m_row_to_col_to_string[r]
 
@@ -385,8 +385,8 @@ class Smat:
     def num_cols(self) -> int:
         return self.m_row_to_col_to_string.num_cols()
 
-    def column(self, c: int) -> amarrays.Strings:
-        result = amarrays.strings_empty()
+    def column(self, c: int) -> arr.Strings:
+        result = arr.strings_empty()
         for r in range(0, self.num_rows()):
             result.add(self.string(r, c))
         return result
@@ -394,13 +394,13 @@ class Smat:
     def string(self, r: int, c: int) -> str:
         return self.row(r).string(c)
 
-    def row(self, r: int) -> amarrays.Strings:
+    def row(self, r: int) -> arr.Strings:
         assert 0 <= r < self.num_rows()
         return self.m_row_to_col_to_string.strings_from_row(r)
 
 
 class StringsLoadResult:
-    def __init__(self, ss, em: ambasic.Errmess, source_unavailable: bool):
+    def __init__(self, ss, em: bas.Errmess, source_unavailable: bool):
         self.m_strings = ss
         self.m_errmess = em
         self.m_source_unavailable = source_unavailable
@@ -409,13 +409,13 @@ class StringsLoadResult:
     def has_result(self) -> bool:
         return self.is_ok() or self.has_errmess()
 
-    def result(self) -> tuple[amarrays.Strings, ambasic.Errmess]:
+    def result(self) -> tuple[arr.Strings, bas.Errmess]:
         assert self.has_result()
         return self.m_strings, self.m_errmess
 
     def assert_ok(self):
-        assert self.m_strings is None or isinstance(self.m_strings, amarrays.Strings)
-        assert isinstance(self.m_errmess, ambasic.Errmess)
+        assert self.m_strings is None or isinstance(self.m_strings, arr.Strings)
+        assert isinstance(self.m_errmess, bas.Errmess)
         assert isinstance(self.m_source_unavailable, bool)
 
         n = 0
@@ -437,23 +437,23 @@ class StringsLoadResult:
         return self.m_strings is not None
 
 
-def strings_load_result_error(em: ambasic.Errmess) -> StringsLoadResult:
+def strings_load_result_error(em: bas.Errmess) -> StringsLoadResult:
     return StringsLoadResult(None, em, False)
 
 
 def strings_load_result_no_file():
-    return StringsLoadResult(None, ambasic.errmess_ok(), True)
+    return StringsLoadResult(None, bas.errmess_ok(), True)
 
 
-def strings_load_result_ok(ss: amarrays.Strings) -> StringsLoadResult:
-    return StringsLoadResult(ss, ambasic.errmess_ok(), False)
+def strings_load_result_ok(ss: arr.Strings) -> StringsLoadResult:
+    return StringsLoadResult(ss, bas.errmess_ok(), False)
 
 
 def smat_default():
     return smat_unit("default")
 
 
-def datset_default()->Datset:
+def datset_default() -> Datset:
     return datset_empty()
 
 
@@ -469,21 +469,21 @@ class Datid:
     def string(self) -> str:
         return self.m_string
 
-    def smat_load(self) -> tuple[Smat, ambasic.Errmess]:
+    def smat_load(self) -> tuple[Smat, bas.Errmess]:
         ss, em = self.strings_load()
         if em.is_error():
             return smat_default(), em
 
         return smat_from_strings(ss)
 
-    def datset_load(self) -> tuple[Datset, ambasic.Errmess]:
+    def datset_load(self) -> tuple[Datset, bas.Errmess]:
         sm, em = self.smat_load()
         if em.is_error():
             return datset_default(), em
 
         return datset_from_smat(sm)
 
-    def strings_load(self) -> tuple[amarrays.Strings, ambasic.Errmess]:
+    def strings_load(self) -> tuple[arr.Strings, bas.Errmess]:
         slr = self.strings_load_result_using_filename()
         if slr.has_result():
             return slr.result()
@@ -492,7 +492,7 @@ class Datid:
         if slr.has_result():
             return slr.result()
 
-        return amarrays.strings_default(), ambasic.errmess_error(f'Cannot find a data source using this string: {self.string()}')
+        return arr.strings_default(), bas.errmess_error(f'Cannot find a data source using this string: {self.string()}')
 
     def strings_load_result_using_filename(self) -> StringsLoadResult:
         fn, em = filename_from_string(self.string())
@@ -504,7 +504,7 @@ class Datid:
             return strings_load_result_no_file()
 
         finished = False
-        result = amarrays.strings_empty()
+        result = arr.strings_empty()
         current_line = ""
         while not finished:
             c = f.read()
@@ -521,65 +521,73 @@ class Datid:
         f.close()
         return strings_load_result_ok(result)
 
-    def string_load_using_url(self) -> tuple[str,bool]:
+    def string_load_using_url(self) -> tuple[str, bool]:
         url = "https://github.com/awmoorepa/accumulate/blob/master/" + self.string() + "?raw=true"
         response = requests.get(url, stream=True)
 
         if not response.ok:
-            return "",False
+            return "", False
 
         result = ""
         for chunk in response.iter_content(chunk_size=1024):
-            s = ambasic.string_from_bytes(chunk)
+            s = bas.string_from_bytes(chunk)
             print(f'chunk = [{s}]')
             result = result + s
 
         print(f'result = [{result}]')
-        return result,True
+        return result, True
 
     def strings_load_result_using_url(self) -> StringsLoadResult:
-        s,ok = self.string_load_using_url()
+        s, ok = self.string_load_using_url()
         if not ok:
             return strings_load_result_no_file()
-        return strings_load_result_ok(amarrays.strings_from_lines_in_string(s))
+        return strings_load_result_ok(arr.strings_from_lines_in_string(s))
 
 
-def datid_from_string(datid_as_string: str) -> tuple[Datid, ambasic.Errmess]:
+def datid_default() -> Datid:
+    return Datid("default")
+
+
+def datid_from_string(datid_as_string: str) -> tuple[Datid, bas.Errmess]:
     if is_legal_datid(datid_as_string):
-        return Datid(datid_as_string), ambasic.errmess_ok()
+        return Datid(datid_as_string), bas.errmess_ok()
     else:
-        return None, ambasic.errmess_error(f"{datid_as_string} is not a legal filename")
+        return datid_default(), bas.errmess_error(f"{datid_as_string} is not a legal filename")
 
 
-def row_indexed_smat_singleton(first_row: amarrays.Strings) -> RowIndexedSmat:
+def row_indexed_smat_singleton(first_row: arr.Strings) -> RowIndexedSmat:
     return RowIndexedSmat(first_row)
 
 
 def row_indexed_smat_unit(s: str) -> RowIndexedSmat:
-    return row_indexed_smat_singleton(amarrays.strings_singleton(s))
+    return row_indexed_smat_singleton(arr.strings_singleton(s))
 
 
-def row_indexed_smat_from_strings_array(ssa: amarrays.StringsArray) -> tuple[RowIndexedSmat, ambasic.Errmess]:
+def row_indexed_smat_default():
+    return row_indexed_smat_unit('default')
+
+
+def row_indexed_smat_from_strings_array(ssa: arr.StringsArray) -> tuple[RowIndexedSmat, bas.Errmess]:
     if not ssa:
-        return None, ambasic.errmess_error(
+        return row_indexed_smat_default(), bas.errmess_error(
             "Can't make a row indexed smat from an empty array of strings")
 
     result = row_indexed_smat_singleton(ssa.strings(0))
     for r in range(1, ssa.len()):
         ss = ssa.strings(r)
         if ss.len() != result.num_cols():
-            return result, ambasic.errmess_error(
+            return result, bas.errmess_error(
                 f'first row of csv file has {result.num_cols()} items, but row {r} has {ss.len()} items')
         result.add(ss)
 
-    return result, ambasic.errmess_ok()
+    return result, bas.errmess_ok()
 
 
-def row_indexed_smat_from_strings(ss: amarrays.Strings) -> tuple[RowIndexedSmat, ambasic.Errmess]:
-    ssa, em = amcsv.strings_array_from_strings_csv(ss)
+def row_indexed_smat_from_strings(ss: arr.Strings) -> tuple[RowIndexedSmat, bas.Errmess]:
+    ssa, em = csv.strings_array_from_strings_csv(ss)
 
     if em.is_error():
-        return None, em
+        return row_indexed_smat_default(), em
 
     print(f'ssa =\n{ssa.pretty_string()}')
 
@@ -594,12 +602,12 @@ def smat_unit(s: str) -> Smat:
     return smat_from_row_indexed_smat(row_indexed_smat_unit(s))
 
 
-def smat_from_strings(ss: amarrays.Strings) -> tuple[Smat, ambasic.Errmess]:
+def smat_from_strings(ss: arr.Strings) -> tuple[Smat, bas.Errmess]:
     ris, em = row_indexed_smat_from_strings(ss)
     if em.is_error():
-        return None, em
+        return smat_default(), em
 
-    return smat_from_row_indexed_smat(ris), ambasic.errmess_ok()
+    return smat_from_row_indexed_smat(ris), bas.errmess_ok()
 
 
 def named_column_create(cn: Colname, c: Column) -> NamedColumn:
@@ -610,28 +618,28 @@ def colname_create(s: str) -> Colname:
     return Colname(s)
 
 
-def column_from_bools(bs: amarrays.Bools) -> Column:
+def column_from_bools(bs: arr.Bools) -> Column:
     return Column(Coltype.bool, bs)
 
 
 def column_default() -> Column:
-    return column_from_bools(amarrays.bools_singleton(False))
+    return column_from_bools(arr.bools_singleton(False))
 
 
 def named_column_default() -> NamedColumn:
     return named_column_create(colname_create("default"), column_default())
 
 
-def coltype_from_strings(ss: amarrays.Strings) -> Coltype:
+def coltype_from_strings(ss: arr.Strings) -> Coltype:
     assert ss.len() > 0
     could_be_floats = True
     could_be_bools = True
 
     for i in range(0, ss.len()):
         s = ss.string(i)
-        if could_be_floats and not ambasic.string_is_float(s):
+        if could_be_floats and not bas.string_is_float(s):
             could_be_floats = False
-        if could_be_bools and not ambasic.string_is_bool(s):
+        if could_be_bools and not bas.string_is_bool(s):
             could_be_bools = False
         if not (could_be_bools or could_be_floats):
             return Coltype.string
@@ -644,22 +652,22 @@ def coltype_from_strings(ss: amarrays.Strings) -> Coltype:
         return Coltype.float
 
 
-def column_from_floats(fs: amarrays.Floats) -> Column:
+def column_from_floats(fs: arr.Floats) -> Column:
     return Column(Coltype.float, fs)
 
 
-def column_of_type_strings(ss: amarrays.Strings) -> Column:
+def column_of_type_strings(ss: arr.Strings) -> Column:
     return Column(Coltype.string, ss)
 
 
-def column_from_strings_choosing_coltype(ss: amarrays.Strings) -> Column:
+def column_from_strings_choosing_coltype(ss: arr.Strings) -> Column:
     ct = coltype_from_strings(ss)
     if ct == Coltype.bool:
-        bs, ok = amarrays.bools_from_strings(ss)
+        bs, ok = arr.bools_from_strings(ss)
         assert ok
         return column_from_bools(bs)
     elif ct == Coltype.float:
-        fs, ok = amarrays.floats_from_strings(ss)
+        fs, ok = arr.floats_from_strings(ss)
         assert ok
         return column_from_floats(fs)
     else:
@@ -667,35 +675,35 @@ def column_from_strings_choosing_coltype(ss: amarrays.Strings) -> Column:
         return column_of_type_strings(ss)
 
 
-def named_column_from_strings(ss: amarrays.Strings) -> tuple[NamedColumn, ambasic.Errmess]:
+def named_column_from_strings(ss: arr.Strings) -> tuple[NamedColumn, bas.Errmess]:
     if ss.len() < 2:
-        return None, ambasic.errmess_error("A file with named columns needs at least two rows")
+        return named_column_default(), bas.errmess_error("A file with named columns needs at least two rows")
 
-    rest = amarrays.strings_without_first_n_elements(ss, 1)
+    rest = arr.strings_without_first_n_elements(ss, 1)
     c = column_from_strings_choosing_coltype(rest)
 
-    return named_column_create(colname_create(ss.string(0)), c), ambasic.errmess_ok()
+    return named_column_create(colname_create(ss.string(0)), c), bas.errmess_ok()
 
 
-def named_column_from_smat_column(sm: Smat, c: int) -> tuple[NamedColumn, ambasic.Errmess]:
+def named_column_from_smat_column(sm: Smat, c: int) -> tuple[NamedColumn, bas.Errmess]:
     return named_column_from_strings(sm.column(c))
 
 
-def named_columns_from_smat(sm: Smat) -> tuple[list[NamedColumn], ambasic.Errmess]:
+def named_columns_from_smat(sm: Smat) -> tuple[list[NamedColumn], bas.Errmess]:
     result = []
     for c in range(0, sm.num_cols()):
         nc, em = named_column_from_smat_column(sm, c)
         if em.is_error():
-            return None, em
+            return [], em
         result.append(nc)
 
-    return result, ambasic.errmess_ok()
+    return result, bas.errmess_ok()
 
 
-def datset_from_string(datid_as_string: str) -> tuple[Datset, ambasic.Errmess]:
+def datset_from_string(datid_as_string: str) -> tuple[Datset, bas.Errmess]:
     did, em = datid_from_string(datid_as_string)
     if em.is_error():
-        return None, em
+        return datset_default(), em
     else:
         return did.datset_load()
 
@@ -713,30 +721,30 @@ def load(datid_as_string: str) -> Datset:
     return ds
 
 
-def datset_from_smat(sm: Smat) -> tuple[Datset, ambasic.Errmess]:
+def datset_from_smat(sm: Smat) -> tuple[Datset, bas.Errmess]:
     ncs, em = named_columns_from_smat(sm)
     if em.is_error():
-        return None, em
+        return datset_default(), em
 
     ds = datset_empty()
     for nc in ncs:
         if ds.contains_colname(nc.colname()):
-            return None, ambasic.errmess_error("datset has multiple columns with same name")
+            return datset_default(), bas.errmess_error("datset has multiple columns with same name")
         ds.add(nc)
 
-    return ds, ambasic.errmess_ok()
+    return ds, bas.errmess_ok()
 
 
-def datset_from_strings_csv(ss: amarrays.Strings) -> tuple[Datset, ambasic.Errmess]:
+def datset_from_strings_csv(ss: arr.Strings) -> tuple[Datset, bas.Errmess]:
     sm, em = smat_from_strings(ss)
     if em.is_error():
-        return None, em
+        return datset_default(), em
 
     return datset_from_smat(sm)
 
 
-def datset_from_multiline_string(s: str) -> tuple[Datset, ambasic.Errmess]:
-    ss = amarrays.strings_from_lines_in_string(s)
+def datset_from_multiline_string(s: str) -> tuple[Datset, bas.Errmess]:
+    ss = arr.strings_from_lines_in_string(s)
     return datset_from_strings_csv(ss)
 
 
