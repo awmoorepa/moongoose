@@ -19,11 +19,12 @@ def run():
     unit_tests()
     # Use a breakpoint in the code line below to debug your script.
     print(f'Hello!')  # Press Ctrl+F8 to toggle the breakpoint.
-    a = dat.load("banana.csv")
+    a = dat.load("test")
     print('loaded successfully!')
     a.assert_ok()
     a.explain()
-    a.subcols('ascent', 'distance').explain()
+    # a.subcols('ascent', 'distance').explain()
+    ns.numset_from_datset(a).explain()
 
 
 # Press the green button in the gutter to run the script.

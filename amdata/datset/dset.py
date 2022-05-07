@@ -31,6 +31,37 @@ class Colname:
         return self.m_string == cn.string()
 
 
+class Atom:
+    def __init__(self, ct: Coltype, data):
+        self.m_coltype = ct
+        self.m_data = data
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_coltype, Coltype)
+        ct = self.m_coltype
+        if ct == Coltype.string:
+            assert isinstance(self.m_data, str)
+        elif ct == Coltype.float:
+            assert isinstance(self.m_data, float)
+        elif ct == Coltype.bool:
+            assert isinstance(self.m_data, bool)
+        else:
+            bas.my_error("bad coltype")
+
+
+def atom_from_string(s: str) -> Atom:
+    return Atom(Coltype.string, s)
+
+
+def atom_from_float(f: float) -> Atom:
+    return Atom(Coltype.float, f)
+
+
+def atom_from_bool(b: bool) -> Atom:
+    return Atom(Coltype.bool, b)
+
+
 class Column:
     def __init__(self, ct: Coltype, items: any):
         self.m_coltype = ct
@@ -87,6 +118,17 @@ class Column:
     def bool(self, r: int) -> bool:
         return self.bools().bool(r)
 
+    def atom(self, r: int) -> Atom:
+        ct = self.coltype()
+        if ct == Coltype.string:
+            return atom_from_string(self.string(r))
+        elif ct == Coltype.float:
+            return atom_from_float(self.float(r))
+        elif ct == Coltype.bool:
+            return atom_from_bool(self.bool(r))
+        else:
+            bas.my_error("bad coltype")
+
 
 class NamedColumn:
     def __init__(self, cn: Colname, col: Column):
@@ -108,6 +150,9 @@ class NamedColumn:
 
     def num_rows(self) -> int:
         return self.column().num_rows()
+
+    def coltype(self) -> Coltype:
+        return self.column().coltype()
 
 
 class Colnames:
@@ -142,6 +187,10 @@ class Colnames:
         assert 0 <= i < self.len()
         return self.m_colnames[i]
 
+    def pretty_string(self) -> str:
+        ss = self.strings()
+        return ss.concatenate_fancy('{', ',', '}')
+
 
 def colnames_empty() -> Colnames:
     return Colnames([])
@@ -157,6 +206,25 @@ def colnames_from_list_of_strings(*strs: str) -> Colnames:
         assert isinstance(s, str)
         result.add(colname_from_string(s))
     return result
+
+
+class Row:
+    def __init__(self, la: list[Atom]):
+        self.m_atoms = la
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_atoms, list)
+        for a in self.m_atoms:
+            assert isinstance(a, Atom)
+            a.assert_ok()
+
+    def add(self, a: Atom):
+        self.m_atoms.append(a)
+
+
+def row_empty() -> Row:
+    return Row([])
 
 
 class Datset:
@@ -238,7 +306,9 @@ class Datset:
         return ds
 
     def subcols(self, *strs: str):  # returns Datset
-        cis, ok = self.colids_from_colnames(colnames_from_list_of_strings(*strs))
+        cns = colnames_from_list_of_strings(*strs)
+        print(f'colnames = {cns.pretty_string()}')
+        cis, ok = self.colids_from_colnames(cns)
         assert ok
         return self.subcols_from_ints(cis)
 
@@ -262,6 +332,16 @@ class Datset:
         assert not self.contains_colname(nc.colname())
 
         self.m_named_columns.append(nc)
+
+    def row(self, r: int) -> Row:
+        result = row_empty()
+        for c in range(0, self.num_cols()):
+            a = self.atom(r, c)
+            result.add(a)
+        return result
+
+    def atom(self, r: int, c: int) -> Atom:
+        return self.column(c).atom(r)
 
 
 def datset_empty() -> Datset:
@@ -457,6 +537,16 @@ def datset_default() -> Datset:
     return datset_empty()
 
 
+def test_string():
+    s = """date,hour,person,is_happy\n
+        4/22/22, 15, ann, True\n
+        4/22/22, 15, bob robertson, True\n
+        4/22/22, 16, jan, False\n
+        4/22/22, 09, jan, True\n
+        4/22/22, 12, ann, False\n"""
+    return s
+
+
 class Datid:
     def __init__(self, s: str):
         self.m_string = s
@@ -484,6 +574,10 @@ class Datid:
         return datset_from_smat(sm)
 
     def strings_load(self) -> tuple[arr.Strings, bas.Errmess]:
+        slr = self.strings_load_using_code()
+        if slr.has_result():
+            return slr.result()
+
         slr = self.strings_load_result_using_filename()
         if slr.has_result():
             return slr.result()
@@ -542,6 +636,16 @@ class Datid:
         if not ok:
             return strings_load_result_no_file()
         return strings_load_result_ok(arr.strings_from_lines_in_string(s))
+
+    def strings_load_using_code(self) -> StringsLoadResult:
+        if self.equals_string("test"):
+            s = test_string()
+            return strings_load_result_ok(arr.strings_from_lines_in_string(s))
+        else:
+            return strings_load_result_no_file()
+
+    def equals_string(self, test: str) -> bool:
+        return self.string() == test
 
 
 def datid_default() -> Datid:

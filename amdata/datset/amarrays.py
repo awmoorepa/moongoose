@@ -72,6 +72,14 @@ class Floats:
     def value_as_string(self, i: int) -> str:
         return str(self.float(i))
 
+    def extremes(self) -> bas.Interval:
+        assert self.len() > 0
+        v0 = self.float(0)
+        result = bas.interval_create(v0, v0)
+        for i in range(1, self.len()):
+            result.expand_to_include(self.float(i))
+        return result
+
 
 class Namer:
     def __init__(self):
@@ -184,6 +192,23 @@ class Ints:
     def set(self, i: int, v: int):
         assert 0 <= i < self.len()
         self.m_ints[i] = v
+
+    def increment(self, i: int):
+        assert 0 <= i < self.len()
+        self.m_ints[i] += 1
+
+    def argmax(self):
+        assert self.len() > 0
+        result = 0
+        highest_value = self.int(0)
+        for i in range(1, self.len()):
+            v = self.int(i)
+            if v > highest_value:
+                result = i
+                highest_value = v
+
+        assert self.int(result) == highest_value
+        return result
 
 
 class Strings:
@@ -458,3 +483,37 @@ def is_list_of_instances_of_strings_class(ssl: list) -> bool:
 
 def strings_default() -> Strings:
     return strings_empty()
+
+
+class Fmat:
+    def __init__(self):
+        self.m_row_to_col_to_value = []
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_row_to_col_to_value, list)
+        if self.num_rows() > 0:
+            n_cols = self.row(0).len()
+            for fs in self.m_row_to_col_to_value:
+                assert isinstance(fs, Floats)
+                assert fs.len() == n_cols
+                fs.assert_ok()
+
+    def num_rows(self) -> int:
+        return len(self.m_row_to_col_to_value)
+
+    def row(self, r: int) -> Floats:
+        assert 0 <= r < self.num_rows()
+        return self.m_row_to_col_to_value[r]
+
+    def num_cols(self) -> int:
+        assert self.num_rows() > 0
+        return self.row(0).len()
+
+    def add_row(self, z: Floats):
+        assert z.len() == self.num_cols()
+        self.m_row_to_col_to_value.append(z)
+
+
+def fmat_empty():
+    return Fmat()

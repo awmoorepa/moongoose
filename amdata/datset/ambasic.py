@@ -160,3 +160,39 @@ def string_from_bytes(bys: bytes) -> str:
 
 def character_default() -> Character:
     return character_space()
+
+
+class Interval:
+    def __init__(self, lo: float, hi: float):
+        self.m_lo = lo
+        self.m_hi = hi
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_lo, float)
+        assert isinstance(self.m_hi, float)
+        assert self.m_lo <= self.m_hi
+
+    def expand_to_include(self, x: float):
+        if x < self.lo():
+            self.set_lo(x)
+        elif x > self.hi():
+            self.set_hi(x)
+
+    def lo(self) -> float:
+        return self.m_lo
+
+    def set_lo(self, x: float):
+        assert x <= self.hi()
+        self.m_lo = x
+
+    def hi(self) -> float:
+        return self.m_hi
+
+    def set_hi(self, x: float):
+        assert self.lo() <= x
+        self.m_hi = x
+
+
+def interval_create(lo: float, hi: float) -> Interval:
+    return Interval(lo, hi)
