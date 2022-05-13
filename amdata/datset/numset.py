@@ -1,102 +1,234 @@
 import enum
 
-import datset.dset as ds
+import datset.dset as dat
 import datset.ambasic as bas
 import datset.amarrays as arr
 
+
 class Noomname:
-    def __init__(self,name_as_str: str):
+    def __init__(self, name_as_str: str):
         self.m_name = name_as_str
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_name,str)
-        assert not len(str) == 0
+        assert isinstance(self.m_name, str)
+        assert len(self.m_name) > 0
+        assert not bas.string_contains(self.m_name, bas.character_space())
+
+    def string(self) -> str:
+        return self.m_name
+
+    def colname(self) -> dat.Colname:
+        return dat.colname_create(self.string())
+
+    def equals(self, other) -> bool:
+        assert isinstance(other, Noomname)
+        return self.m_name == other.m_name
+
 
 class Noomnames:
-    def __init__(self,li: list[Noomname]):
+    def __init__(self, li: list[Noomname]):
         self.m_noomnames = li
         self.assert_ok()
 
     def assert_ok(self):
         for nn in self.m_noomnames:
-            assert isinstance(nn,Noomname)
+            assert isinstance(nn, Noomname)
             nn.assert_ok()
 
         assert not self.strings().contains_duplicates()
 
-    def add(self, nn:Noomname):
+    def add(self, nn: Noomname):
         self.m_noomnames.append(nn)
 
-    def len(self)->int:
+    def len(self) -> int:
         return len(self.m_noomnames)
 
     def append(self, nns):
-        assert isinstance(self,Noomnames)
-        for i in range(0,nns.len()):
+        assert isinstance(self, Noomnames)
+        for i in range(0, nns.len()):
             self.add(nns.noomname(i))
 
-def noomnames_empty()->Noomnames:
+    def strings(self) -> arr.Strings:
+        result = arr.strings_empty()
+        for i in range(0, self.len()):
+            result.add(self.noomname(i).string())
+        return result
+
+    def noomname(self, i: int) -> Noomname:
+        assert 0 <= i < self.len()
+        return self.m_noomnames[i]
+
+    def equals(self, other) -> bool:
+        assert isinstance(other, Noomnames)
+        n = self.len()
+        if n != other.len():
+            return False
+        for i in range(0, n):
+            if not self.noomname(i).equals(other.noomname(i)):
+                return False
+        return True
+
+    def contains(self, nn: Noomname) -> bool:
+        col, ok = self.col_from_noomname(nn)
+        return ok
+
+    def col_from_noomname(self, nn: Noomname) -> tuple[int, bool]:
+        for col in range(0, self.len()):
+            if self.noomname(col).equals(nn):
+                return col, True
+        return -77, False
+
+
+def noomnames_empty() -> Noomnames:
     return Noomnames([])
 
 
-def noomname_create(name_as_string:str)->Noomname:
-    return Noomname(name_as_string)
+def noomname_create(name_as_string: str) -> Noomname:
+    print(f'len({name_as_string}) = {len(name_as_string)}')
+    assert len(name_as_string) > 0
+    spa = bas.character_space()
+    und = bas.character_create('_')
+    return Noomname(bas.string_replace(name_as_string, spa, und))
 
 
-def noomnames_from_colname_and_valnames(cn: ds.Colname, encoding_to_valname: arr.Namer)->Noomnames:
+def noomnames_from_colname_and_valnames(cn: dat.Colname, encoding_to_valname: arr.Namer) -> Noomnames:
     result = noomnames_empty()
-    for encoding in range(0,encoding_to_valname.len()):
+    for encoding in range(0, encoding_to_valname.len()):
         valname = encoding_to_valname.name_from_key(encoding)
         s = f'{cn.string()}_is_{valname}'
         result.add(noomname_create(s))
     return result
 
 
+class Noomset:
+    def __init__(self, nns: Noomnames, fm: arr.Fmat):
+        self.m_noomnames = nns
+        self.m_row_to_col_to_value = fm
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_noomnames, Noomnames)
+        self.m_noomnames.assert_ok()
+        assert isinstance(self.m_row_to_col_to_value, arr.Fmat)
+        self.m_row_to_col_to_value.assert_ok()
+        if self.m_row_to_col_to_value.num_rows() > 0:
+            assert self.noomnames().len() == self.m_row_to_col_to_value.num_cols()
+
+    def noomnames(self) -> Noomnames:
+        return self.m_noomnames
+
+    def add_row(self, z: arr.Floats):
+        self.m_row_to_col_to_value.add_row(z)
+
+    def explain(self):
+        print(self.pretty_string())
+
+    def pretty_strings(self) -> arr.Strings:
+        return self.datset().pretty_strings()
+
+    def pretty_string(self) -> str:
+        return self.pretty_strings().concatenate_fancy('','\n','')
+
+    def datset(self) -> dat.Datset:
+        result = dat.datset_empty()
+        for i in range(0, self.num_cols()):
+            nc = self.named_column(i)
+            result.add(nc)
+        return result
+
+    def num_cols(self) -> int:
+        return self.m_noomnames.len()
+
+    def named_column(self, c: int) -> dat.NamedColumn:
+        cn = self.noomname(c).colname()
+        col = self.column(c)
+        return dat.named_column_create(cn, col)
+
+    def noomname(self, c: int) -> Noomname:
+        return self.noomnames().noomname(c)
+
+    def column(self, c: int):
+        return dat.column_from_floats(self.col(c))
+
+    def col(self, c: int) -> arr.Floats:
+        return self.fmat().column(c)
+
+    def fmat(self) -> arr.Fmat:
+        return self.m_row_to_col_to_value
+
+    def loosely_equals(self, other) -> bool:
+        assert isinstance(other, Noomset)
+        if not self.noomnames().equals(other.noomnames()):
+            return False
+        return self.fmat().loosely_equals(other.fmat())
+
+    def num_rows(self) -> int:
+        return self.fmat().num_rows()
+
+    def row(self, r: int) -> arr.Floats:
+        return self.fmat().row(r)
+
+
+def noomset_empty(nns: Noomnames) -> Noomset:
+    return Noomset(nns, arr.fmat_empty())
 
 
 class StringTransformer:
-    def __init__(self,nns:Noomnames,e2n: arr.Namer):
+    def __init__(self, nns: Noomnames, e2n: arr.Namer):
         self.m_noomnames = nns
         self.m_encoding_to_valname = e2n
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_noomnames,Noomnames)
+        assert isinstance(self.m_noomnames, Noomnames)
         self.m_noomnames.assert_ok()
-        assert isinstance(self.m_encoding_to_valname,arr.Namer)
+        assert isinstance(self.m_encoding_to_valname, arr.Namer)
         self.m_encoding_to_valname.assert_ok()
         assert self.m_noomnames.len() == self.m_encoding_to_valname.len()
 
-    def noomnames(self)->Noomnames:
+    def noomnames(self) -> Noomnames:
         return self.m_noomnames
 
+    def transform_string(self, valname: str):
+        result = arr.floats_all_zero(self.num_encodings())
+        encoding, ok = self.encoding_from_valname(valname)
+        if ok:
+            result.set(encoding, 1.0)
+        return result
 
-def string_transformer_create(nns: Noomnames, encoding_to_valname: arr.Namer)->StringTransformer:
-    return StringTransformer(nns,encoding_to_valname)
+    def num_encodings(self) -> int:
+        return self.m_encoding_to_valname.len()
+
+    def encoding_from_valname(self, name: str) -> tuple[int, bool]:
+        return self.m_encoding_to_valname.key_from_name(name)
 
 
-def string_transformer_from_named_column(cn:ds.Colname,row_to_valname:arr.Strings)->StringTransformer:
+def string_transformer_create(nns: Noomnames, encoding_to_valname: arr.Namer) -> StringTransformer:
+    return StringTransformer(nns, encoding_to_valname)
+
+
+def string_transformer_from_named_column(cn: dat.Colname, row_to_valname: arr.Strings) -> StringTransformer:
     vc_to_name = arr.namer_empty()
     vc_to_frequency = arr.ints_empty()
-    for r in range(0,row_to_valname.len()):
+    for r in range(0, row_to_valname.len()):
         s = row_to_valname.string(r)
-        vc,ok = vc_to_name.key_from_name(s)
+        vc, ok = vc_to_name.key_from_name(s)
         if ok:
             vc_to_frequency.increment(vc)
         else:
             vc = vc_to_name.len()
             vc_to_name.add(s)
             vc_to_frequency.add(1)
-            assert vc_to_name.name_from_key(vc)==s
-            assert vc_to_frequency.len() == vc+1
+            assert vc_to_name.name_from_key(vc) == s
+            assert vc_to_frequency.len() == vc + 1
 
     mcv = vc_to_frequency.argmax()
 
     vc_to_encoding = arr.ints_empty()
     encoding_to_valname = arr.namer_empty()
 
-    for vc in range(0,vc_to_frequency.len()):
+    for vc in range(0, vc_to_frequency.len()):
         encoding: int
         if vc == mcv:
             encoding = -777
@@ -108,91 +240,117 @@ def string_transformer_from_named_column(cn:ds.Colname,row_to_valname:arr.String
 
         vc_to_encoding.add(encoding)
 
-    for vc in range(0,vc_to_encoding.len()):
+    for vc in range(0, vc_to_encoding.len()):
         encoding = vc_to_encoding.int(vc)
-        if vc==mcv:
+        if vc == mcv:
             assert encoding < 0
         else:
             assert vc_to_name.name_from_key(vc) == encoding_to_valname.name_from_key(encoding)
 
-    nns = noomnames_from_colname_and_valnames(cn,encoding_to_valname)
+    nns = noomnames_from_colname_and_valnames(cn, encoding_to_valname)
 
-    return string_transformer_create(nns,encoding_to_valname)
+    return string_transformer_create(nns, encoding_to_valname)
+
 
 class Transtype(enum.Enum):
-    bool = 0
-    float = 1
-    string = 2
+    constant = 0
+    bool = 1
+    float = 2
+    string = 3
 
 
-def noomnames_singleton(nn:Noomname)->Noomnames:
+def noomnames_singleton(nn: Noomname) -> Noomnames:
     nns = noomnames_empty()
     nns.add(nn)
     return nns
 
+
 class FloatTransformer:
-    def __init__(self,nn:Noomname,fs:arr.Floats):
+    def __init__(self, nn: Noomname, fs: arr.Floats):
         self.m_noomname = nn
         self.m_interval = fs.extremes()
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_noomname,Noomname)
+        assert isinstance(self.m_noomname, Noomname)
         self.m_noomname.assert_ok()
-        assert isinstance(self.m_interval,bas.Interval)
+        assert isinstance(self.m_interval, bas.Interval)
         self.m_interval.assert_ok()
 
-    def noomname(self)->Noomname:
+    def noomname(self) -> Noomname:
         return self.m_noomname
 
+    def transform_float(self, f: float) -> arr.Floats:
+        z = self.interval().fractional_from_absolute(f)
+        return arr.floats_singleton(z)
 
-def float_transformer_create(nn:Noomname, fs:arr.Floats)->FloatTransformer:
-    return FloatTransformer(nn,fs)
+    def interval(self) -> bas.Interval:
+        return self.m_interval
+
+
+def float_transformer_create(nn: Noomname, fs: arr.Floats) -> FloatTransformer:
+    return FloatTransformer(nn, fs)
+
 
 class BoolTransformer:
-    def __init__(self,nn:Noomname):
+    def __init__(self, nn: Noomname):
         self.m_noomname = nn
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_noomname,Noomname)
+        assert isinstance(self.m_noomname, Noomname)
         self.m_noomname.assert_ok()
 
-    def noomname(self)->Noomname:
+    def noomname(self) -> Noomname:
         return self.m_noomname
 
+    def transform_bool(self, b: bool) -> arr.Floats:
+        assert isinstance(self, BoolTransformer)
+        z: float
+        if b:
+            z = 1.0
+        else:
+            z = 0.0
+        return arr.floats_singleton(z)
 
-def bool_transformer_create(nn:Noomname)->BoolTransformer:
+
+def bool_transformer_create(nn: Noomname) -> BoolTransformer:
     return BoolTransformer(nn)
 
 
-def bool_transformer_from_named_column(cn:ds.Colname)->BoolTransformer:
+def bool_transformer_from_named_column(cn: dat.Colname) -> BoolTransformer:
     return bool_transformer_create(noomname_from_colname(cn))
 
 
-
-
 class Transformer:
-    def __init__(self,tt:Transtype,data):
+    def __init__(self, tt: Transtype, mc: bas.Maybeint, data):
+        self.m_maybecol = mc
         self.m_transtype = tt
         self.m_data = data
         self.assert_ok()
 
     def assert_ok(self):
+        assert isinstance(self.m_maybecol, bas.Maybeint)
+        assert isinstance(self.m_transtype, Transtype)
         tt = self.m_transtype
+
+        assert (tt == Transtype.constant) == self.m_maybecol.is_undefined()
+
         if tt == Transtype.string:
-            assert isinstance(self.m_data,StringTransformer)
+            assert isinstance(self.m_data, StringTransformer)
             self.m_data.assert_ok()
         elif tt == Transtype.float:
-            assert isinstance(self.m_data,FloatTransformer)
+            assert isinstance(self.m_data, FloatTransformer)
             self.m_data.assert_ok()
         elif tt == Transtype.bool:
-            assert isinstance(self.m_data,BoolTransformer)
+            assert isinstance(self.m_data, BoolTransformer)
             self.m_data.assert_ok()
+        elif tt == Transtype.constant:
+            assert self.m_data is None
         else:
             bas.my_error("bad Transtype")
 
-    def noomnames(self)->Noomnames:
+    def noomnames(self) -> Noomnames:
         tt = self.m_transtype
         if tt == Transtype.string:
             return self.string_transformer().noomnames()
@@ -200,126 +358,229 @@ class Transformer:
             return noomnames_singleton(self.float_transformer().noomname())
         elif tt == Transtype.bool:
             return noomnames_singleton(self.bool_transformer().noomname())
+        elif tt == Transtype.constant:
+            return noomnames_singleton(noomname_create("constant"))
         else:
             bas.my_error("bad Transtype")
 
-    def string_transformer(self)->StringTransformer:
+    def string_transformer(self) -> StringTransformer:
         assert self.transtype() == Transtype.string
         return self.m_data
 
-    def float_transformer(self)->FloatTransformer:
+    def float_transformer(self) -> FloatTransformer:
         assert self.transtype() == Transtype.float
         return self.m_data
 
-    def bool_transformer(self)->BoolTransformer:
+    def bool_transformer(self) -> BoolTransformer:
         assert self.transtype() == Transtype.bool
         return self.m_data
 
-    def transtype(self)->Transtype:
+    def transtype(self) -> Transtype:
         return self.m_transtype
 
+    def transform_row(self, rw: dat.Row) -> arr.Floats:
+        tt = self.transtype()
+        if tt == Transtype.constant:
+            return arr.floats_singleton(1.0)
+        else:
+            col, ok = self.col()
+            assert ok
+            a = rw.atom(col)
+            ct = a.coltype()
+            if ct == dat.Coltype.string:
+                return self.string_transformer().transform_string(a.string())
+            elif ct == dat.Coltype.float:
+                return self.float_transformer().transform_float(a.float())
+            elif ct == dat.Coltype.bool:
+                return self.bool_transformer().transform_bool(a.bool())
+            else:
+                bas.my_error("bad coltype")
 
-def noomname_from_colname(cn:ds.Colname)->Noomname:
+    def col(self) -> tuple[int, bool]:
+        return self.m_maybecol.int()
+
+
+def noomname_from_colname(cn: dat.Colname) -> Noomname:
     return noomname_create(cn.string())
 
 
-def float_transformer_from_named_column(cn:ds.Colname,fs:arr.Floats)->FloatTransformer:
-    return float_transformer_create(noomname_from_colname(cn),fs)
+def float_transformer_from_named_column(cn: dat.Colname, fs: arr.Floats) -> FloatTransformer:
+    return float_transformer_create(noomname_from_colname(cn), fs)
 
 
-def transformer_from_named_column(nc:ds.NamedColumn)->Transformer:
+def transformer_from_named_column(ds: dat.Datset, col: int) -> Transformer:
+    nc = ds.named_column(col)
     ct = nc.coltype()
     cn = nc.colname()
     c = nc.column()
-    if ct == ds.Coltype.string:
-        return Transformer(Transtype.string,string_transformer_from_named_column(cn,c.strings()))
-    elif ct == ds.Coltype.float:
-        return Transformer(Transtype.float,float_transformer_from_named_column(cn,c.floats()))
-    elif ct == ds.Coltype.bool:
-        return Transformer(Transtype.bool,bool_transformer_from_named_column(cn))
+    maybe_col = bas.maybeint_defined(col)
+    if ct == dat.Coltype.string:
+        return Transformer(Transtype.string, maybe_col, string_transformer_from_named_column(cn, c.strings()))
+    elif ct == dat.Coltype.float:
+        return Transformer(Transtype.float, maybe_col, float_transformer_from_named_column(cn, c.floats()))
+    elif ct == dat.Coltype.bool:
+        return Transformer(Transtype.bool, maybe_col, bool_transformer_from_named_column(cn))
     else:
         bas.my_error("bad Transtype")
 
 
 class Transformers:
-    def __init__(self,tfs:list[Transformer]):
+    def __init__(self, tfs: list[Transformer]):
         self.m_transformers = tfs
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_transformers,list)
+        assert isinstance(self.m_transformers, list)
         for tf in self.m_transformers:
-            assert isinstance(tf,Transformer)
+            assert isinstance(tf, Transformer)
             tf.assert_ok()
 
-    def add(self, tf:Transformer):
+    def add(self, tf: Transformer):
         self.m_transformers.append(tf)
 
-    def noomnames(self)->Noomnames:
+    def noomnames(self) -> Noomnames:
         result = noomnames_empty()
-        for i in range(0,self.len()):
+        for i in range(0, self.len()):
             tf = self.transformer(i)
             result.append(tf.noomnames())
         return result
 
-    def transformer(self, i)->Transformer:
+    def transformer(self, i) -> Transformer:
         assert 0 <= i < self.len()
         return self.m_transformers[i]
 
-    def len(self)->int:
+    def len(self) -> int:
         return len(self.m_transformers)
 
-    def transform_row(self, rw:ds.Row)->arr.Floats:
-        assert rw.len()==self.len()
+    def transform_row(self, rw: dat.Row) -> arr.Floats:
         result = arr.floats_empty()
-        for i in range(0,self.len()):
+        for i in range(0, self.len()):
             t = self.transformer(i)
-            fs = t.transform_atom(rw.atom(i))
+            fs = t.transform_row(rw)
             result.append(fs)
         return result
 
+    def transform_datset(self, ds: dat.Datset) -> Noomset:
+        nns = self.noomnames()
+        ns = noomset_empty(nns)
+        for r in range(0, ds.num_rows()):
+            z = self.transform_row(ds.row(r))
+            ns.add_row(z)
+        return ns
 
 
 def transformers_empty():
     return Transformers([])
 
 
-def transformers_from_datset(ds:ds.Datset)->Transformers:
-    tf = transformers_empty()
-    for c in range(0,ds.num_cols()):
-        tf.add(transformer_from_named_column(ds.named_column(c)))
+def transformers_singleton(tf: Transformer) -> Transformers:
+    result = transformers_empty()
+    result.add(tf)
+    return result
+
+
+def transformer_constant_one():
+    return Transformer(Transtype.constant, bas.maybeint_undefined(), None)
+
+
+def transformers_from_datset(ds: dat.Datset) -> Transformers:
+    tf = transformers_singleton(transformer_constant_one())
+    for c in range(0, ds.num_cols()):
+        tf.add(transformer_from_named_column(ds, c))
     return tf
 
 
-class Noomset:
-    def __init__(self,nns:Noomnames,fm:arr.Fmat):
-        self.m_noomnames = nns
-        self.m_row_to_col_to_value = fm
-        self.assert_ok()
-
-    def assert_ok(self):
-        assert isinstance(self.m_noomnames,Noomnames)
-        self.m_noomnames.assert_ok()
-        assert isinstance(self.m_row_to_col_to_value,arr.Fmat)
-        self.m_row_to_col_to_value.assert_ok()
-        assert self.noomnames().len() == self.m_row_to_col_to_value.num_cols()
-
-    def noomnames(self)->Noomnames:
-        return self.m_noomnames
-
-    def add_row(self, z:arr.Floats):
-        self.m_row_to_col_to_value.add_row(z)
-
-
-def noomset_empty(nns:Noomnames)->Noomset:
-    return Noomset(nns,arr.fmat_empty())
-
-
-def noomset_from_datset(ds:ds.Datset)->Noomset:
+def noomset_from_datset(ds: dat.Datset) -> Noomset:
     tf = transformers_from_datset(ds)
-    nns = tf.noomnames()
-    ns = noomset_empty(nns)
-    for r in range(0,ds.num_rows()):
-        z = tf.transform_row(ds.row(r))
-        ns.add_row(z)
-    return ns
+    return tf.transform_datset(ds)
+
+
+def noomset_default() -> Noomset:
+    nn = noomname_create("default")
+    nns = noomnames_singleton(nn)
+    return noomset_empty(nns)
+
+
+def noomnames_from_strings(ss: arr.Strings) -> Noomnames:
+    print(f'ss(noomnames_from_strings) = {ss.pretty_string()}')
+    nns = noomnames_empty()
+    for i in range(0, ss.len()):
+        s = ss.string(i)
+        print(f's[{i}] = [{s}]')
+        nn = noomname_create(s)
+        print(f'nn[{i}] = {nn.string()}')
+        nns.add(nn)
+
+    return nns
+
+
+def noomset_from_smat(sm: dat.Smat) -> tuple[Noomset, bas.Errmess]:
+    if sm.num_rows() < 2:
+        return noomset_default(), bas.errmess_error("Need at least 2 rows")
+
+    if sm.num_cols() < 1:
+        return noomset_default(), bas.errmess_error("Need at least 1 column")
+
+    nns = noomnames_from_strings(sm.row(0))
+
+    result = noomset_empty(nns)
+
+    for r in range(1, sm.num_rows()):
+        fs, ok = arr.floats_from_strings(sm.row(r))
+        if not ok:
+            em = bas.errmess_error(f'Error parsing line {r}: not a CSV list of floats')
+            return noomset_default(), em
+
+        if fs.len() != nns.len():
+            s = f"""Error parsing line {r}:" 
+            " Expected {nns.len()} floats, but found {fs.len()}."""
+            em = bas.errmess_error(s)
+            return noomset_default(), em
+
+        result.add_row(fs)
+    return result, bas.errmess_ok()
+
+
+def noomset_from_multiline_string(s: str) -> tuple[Noomset, bas.Errmess]:
+    sm, em = dat.smat_from_multiline_string(s)
+
+    print(f'noomset_from first em = {em.string()}')
+
+    if em.is_error():
+        return noomset_default(), em
+
+    print(f'sm(noomset_from_multiline) =\n{sm.pretty_string()}')
+    ns, em2 = noomset_from_smat(sm)
+
+    print(f'em2(noomset_from_multiline) = {em2.string()}')
+    print(f'noomset_from_smat(noomset_from_multiline) = \n{ns.pretty_string()}')
+
+    return ns, em2
+
+
+def unit_test():
+    ds_string = """color,is_bright\n
+    red,true\n
+    blue,false\n
+    blue,false\n
+    yellow,true"""
+
+    ns_string = """constant,color_is_red,color_is_yellow,is_bright\n
+    1,1,0,1\n
+    1,0,0,0\n
+    1,0,0,0\n
+    1,0,1,1"""
+
+    ds, ds_errmess = dat.datset_from_multiline_string(ds_string)
+
+    print(f'ds_errmess = {ds_errmess.string()}')
+
+    assert ds_errmess.is_ok()
+
+    ns, ns_errmess = noomset_from_multiline_string(ns_string)
+
+    print(f'ns_errmess = {ns_errmess.string()}')
+    assert ns_errmess.is_ok()
+    ns2 = noomset_from_datset(ds)
+
+    assert ns2.loosely_equals(ns)

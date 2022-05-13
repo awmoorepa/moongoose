@@ -6,12 +6,15 @@
 import datset.amarrays as arr
 import datset.amcsv as csv
 import datset.dset as dat
+import datset.numset as num
+import datset.learn as lea
 
 
 def unit_tests():
     arr.unit_test()
     csv.unit_test()
     dat.unit_test()
+    num.unit_test()
 
 
 def run():
@@ -24,7 +27,16 @@ def run():
     a.assert_ok()
     a.explain()
     # a.subcols('ascent', 'distance').explain()
-    ns.numset_from_datset(a).explain()
+    num.noomset_from_datset(a).explain()
+
+    output = a.named_column_from_string('is_happy')
+    inputs = a.without_column(output)
+    mod = lea.learner_type_logistic().train(inputs, output)
+    assert isinstance(mod,lea.Model)
+    mod.explain()
+    row = inputs.row(0)
+    print(f'predict is_happy for this row: {row.string()}')
+    mod.predict(row).explain()
 
 
 # Press the green button in the gutter to run the script.

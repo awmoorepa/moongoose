@@ -68,9 +68,7 @@ class CsvReader:
         self.next(next_state)
 
     def emit_word(self, next_state: Cstate):
-        print(f"word I'm about to add = [{self.word()}]")
         trimmed = trim_string(self.word())
-        print(f"trimmed word = [{trimmed}]")
         self.row().add(trimmed)
         self.m_word = ""
         self.next(next_state)

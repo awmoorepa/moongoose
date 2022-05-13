@@ -80,6 +80,36 @@ class Floats:
             result.expand_to_include(self.float(i))
         return result
 
+    def set(self, index: int, v: float):
+        assert 0 <= index < self.len()
+        self.m_floats[index] = v
+
+    def append(self, others):
+        assert isinstance(others, Floats)
+        for i in range(0, others.len()):
+            self.add(others.float(i))
+
+    def loosely_equals(self, other) -> bool:
+        n = self.len()
+        if n != other.len():
+            return False
+        for i in range(0, n):
+            if not bas.loosely_equals(self.float(i), other.float(i)):
+                return False
+        return True
+
+    def increment(self, i: int, delta: float):
+        self.set(i, self.float(i) + delta)
+
+    def dot_product(self, other) -> float:  # other is type Floats
+        assert isinstance(self, Floats)
+        assert self.len() == other.len
+        result = 0.0
+        for i in range(0, self.len()):
+            result += self.float(i) * other.float(i)
+
+        return result
+
 
 class Namer:
     def __init__(self):
@@ -240,7 +270,7 @@ class Strings:
         self.m_strings.append(s)
 
     def pretty_string(self) -> str:
-        return concatenate_list_of_strings(self.pretty_strings())
+        return self.concatenate_fancy('{', ',', '}')
 
     def concatenate_fancy(self, left: str, mid: str, right: str) -> str:
         result = ""
@@ -290,6 +320,11 @@ class Strings:
             result = result + self.string(i)
         return result
 
+    def append(self, other):  # other is type Strings
+        assert isinstance(other, Strings)
+        for i in range(0, other.len()):
+            self.add(other.string(i))
+
 
 def strings_empty() -> Strings:
     return Strings([])
@@ -324,14 +359,14 @@ class StringsArray:
         return self.strings(r).string(c)
 
     def pretty_string(self) -> str:
-        return self.pretty_strings().concatenate()
+        return self.pretty_strings().concatenate_fancy('','\n','')
 
     def pretty_strings(self) -> Strings:
         pad = "  "
         col_to_n_chars = self.col_to_num_chars()
         result = strings_empty()
         for r in range(0, self.len()):
-            result.add(pad + self.strings(r).concatenate_with_padding(col_to_n_chars) + '\n')
+            result.add(pad + self.strings(r).concatenate_with_padding(col_to_n_chars))
         return result
 
     def col_to_num_chars(self) -> Ints:
@@ -456,6 +491,8 @@ def test_floats_bad(ls: list[str]):
 
 
 def unit_test():
+    assert not bas.string_contains('hello_said_peter', bas.character_space())
+    assert bas.string_contains('hello_said peter', bas.character_space())
     test_floats_ok(["4", "-0.5", ".0"], 3.5)
     test_floats_ok([], 0.0)
     test_floats_bad(["5", "5", "5p"])
@@ -511,9 +548,47 @@ class Fmat:
         return self.row(0).len()
 
     def add_row(self, z: Floats):
-        assert z.len() == self.num_cols()
+        if self.num_rows() > 0:
+            assert z.len() == self.num_cols()
         self.m_row_to_col_to_value.append(z)
+
+    def column(self, c: int) -> Floats:
+        result = floats_empty()
+        for r in range(0, self.num_rows()):
+            result.add(self.float(r, c))
+        return result
+
+    def float(self, r: int, c: int) -> float:
+        return self.row(r).float(c)
+
+    def loosely_equals(self, other) -> bool:
+        assert isinstance(other, Fmat)
+        n_rows = self.num_rows()
+        if n_rows != other.num_rows():
+            return False
+        for i in range(0, n_rows):
+            if not self.row(i).loosely_equals(other.row(i)):
+                return False
+
+        return True
 
 
 def fmat_empty():
     return Fmat()
+
+
+def floats_all_constant(n, c: float) -> Floats:
+    result = floats_empty()
+    for i in range(0, n):
+        result.add(c)
+    return result
+
+
+def floats_all_zero(n: int) -> Floats:
+    return floats_all_constant(n, 0.0)
+
+
+def floats_singleton(f: float) -> Floats:
+    result = floats_empty()
+    result.add(f)
+    return result

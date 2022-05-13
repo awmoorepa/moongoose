@@ -22,6 +22,7 @@ class Colname:
     def assert_ok(self):
         assert isinstance(self.m_string, str)
         assert self.m_string != ""
+        assert not bas.string_contains(self.m_string, bas.character_space())
 
     def string(self) -> str:
         return self.m_string
@@ -48,6 +49,24 @@ class Atom:
             assert isinstance(self.m_data, bool)
         else:
             bas.my_error("bad coltype")
+
+    def coltype(self) -> Coltype:
+        return self.m_coltype
+
+    def string(self) -> str:
+        assert self.coltype() == Coltype.string
+        assert isinstance(self.m_data, str)
+        return self.m_data
+
+    def float(self) -> float:
+        assert self.coltype() == Coltype.float
+        assert isinstance(self.m_data, float)
+        return self.m_data
+
+    def bool(self) -> bool:
+        assert self.coltype() == Coltype.bool
+        assert isinstance(self.m_data, bool)
+        return self.m_data
 
 
 def atom_from_string(s: str) -> Atom:
@@ -154,6 +173,9 @@ class NamedColumn:
     def coltype(self) -> Coltype:
         return self.column().coltype()
 
+    def atom(self, r:int)->Atom:
+        return self.column().atom(r)
+
 
 class Colnames:
     def __init__(self, cs: list[Colname]):
@@ -191,13 +213,23 @@ class Colnames:
         ss = self.strings()
         return ss.concatenate_fancy('{', ',', '}')
 
+    def minus(self, cn: Colname):  # returns Colnames
+        result = colnames_empty()
+        for i in range(0, self.len()):
+            cn_i = self.colname(i)
+            if not cn.equals(cn_i):
+                result.add(cn_i)
+        return result
+
 
 def colnames_empty() -> Colnames:
     return Colnames([])
 
 
 def colname_from_string(s: str) -> Colname:
-    return Colname(s)
+    spa = bas.character_space()
+    und = bas.character_create('_')
+    return Colname(bas.string_replace(s, spa, und))
 
 
 def colnames_from_list_of_strings(*strs: str) -> Colnames:
@@ -221,6 +253,13 @@ class Row:
 
     def add(self, a: Atom):
         self.m_atoms.append(a)
+
+    def len(self) -> int:
+        return len(self.m_atoms)
+
+    def atom(self, i: int) -> Atom:
+        assert 0 <= i < self.len()
+        return self.m_atoms[i]
 
 
 def row_empty() -> Row:
@@ -253,8 +292,11 @@ class Datset:
             result.add(nc.colname())
         return result
 
+    def pretty_strings(self) -> arr.Strings:
+        return self.strings_array().pretty_strings()
+
     def pretty_string(self) -> str:
-        return self.strings_array().pretty_string()
+        return self.pretty_strings().concatenate_fancy('','\n','')
 
     def strings_array(self) -> arr.StringsArray:
         result = arr.strings_array_empty()
@@ -343,6 +385,30 @@ class Datset:
     def atom(self, r: int, c: int) -> Atom:
         return self.column(c).atom(r)
 
+    def colid_from_string(self, colname_as_string: str) -> tuple[int, bool]:
+        cn = colname_from_string(colname_as_string)
+        return self.colid_from_colname(cn)
+
+    def named_column_from_string(self, colname_as_string: str) -> NamedColumn:
+        col, ok = self.colid_from_string(colname_as_string)
+        assert ok
+        return self.named_column(col)
+
+    def without_column(self, exclude_me: NamedColumn):  # returns Datset
+        return self.without_colname(exclude_me.colname())
+
+    def without_colname(self, exclude_me: Colname):  # returns Datset
+        col, ok = self.colid_from_colname(exclude_me)
+        assert ok
+        return self.without_colid(col)
+
+    def without_colid(self, col: int):  # returns datset
+        result = datset_empty()
+        for c in range(0, self.num_cols()):
+            if not c == col:
+                result.add(self.named_column(c))
+        return result
+
 
 def datset_empty() -> Datset:
     return Datset([])
@@ -391,18 +457,18 @@ def filename_from_string(f_name: str) -> tuple[Filename, bas.Errmess]:
 
 class RowIndexedSmat:
     def __init__(self, first_row: arr.Strings):
-        self.m_row_to_col_to_string = []
-        self.m_row_to_col_to_string.append(first_row)
+        self.m_row_to_col_to_string = arr.strings_array_empty()
+        self.m_row_to_col_to_string.add(first_row)
         self.assert_ok()
 
     def assert_ok(self):
-        assert arr.is_list_of_instances_of_strings_class(self.m_row_to_col_to_string)
+        assert isinstance(self.m_row_to_col_to_string, arr.StringsArray)
         assert self.num_rows() > 0
         assert self.num_cols() > 0
 
     def num_cols(self) -> int:
         assert self.num_rows() > 0
-        return self.m_row_to_col_to_string[0].len()
+        return self.m_row_to_col_to_string.strings(0).len()
 
     def column(self, c: int) -> arr.Strings:
         assert 0 <= c < self.num_cols()
@@ -412,20 +478,26 @@ class RowIndexedSmat:
         return result
 
     def num_rows(self) -> int:
-        return len(self.m_row_to_col_to_string)
+        return self.m_row_to_col_to_string.len()
 
     def add(self, ss: arr.Strings):
         assert self.num_cols() == ss.len()
-        self.m_row_to_col_to_string.append(ss)
+        self.m_row_to_col_to_string.add(ss)
 
     def string(self, r: int, c: int) -> str:
         assert 0 <= r < self.num_rows()
         assert 0 <= c < self.num_cols()
-        return self.m_row_to_col_to_string[r].string(c)
+        return self.m_row_to_col_to_string.strings(r).string(c)
 
     def strings_from_row(self, r: int) -> arr.Strings:
         assert 0 <= r < self.num_rows()
-        return self.m_row_to_col_to_string[r]
+        return self.m_row_to_col_to_string.strings(r)
+
+    def pretty_strings(self)->arr.Strings:
+        return self.m_row_to_col_to_string.pretty_strings()
+
+    def pretty_string(self)->str:
+        return self.pretty_strings().concatenate_fancy('','\n','')
 
 
 def row_indexed_smat_transpose(ris: RowIndexedSmat) -> RowIndexedSmat:
@@ -477,6 +549,9 @@ class Smat:
     def row(self, r: int) -> arr.Strings:
         assert 0 <= r < self.num_rows()
         return self.m_row_to_col_to_string.strings_from_row(r)
+
+    def pretty_string(self) -> str:
+        return self.m_row_to_col_to_string.pretty_string()
 
 
 class StringsLoadResult:
@@ -870,3 +945,8 @@ def unit_test():
     assert not ds.bool(2, 3)
     assert ds.num_rows() == 5
     assert ds.num_cols() == 4
+
+
+def smat_from_multiline_string(s: str) -> tuple[Smat, bas.Errmess]:
+    ss = arr.strings_from_lines_in_string(s)
+    return smat_from_strings(ss)

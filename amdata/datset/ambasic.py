@@ -1,3 +1,6 @@
+import math
+
+
 def is_power_of_two(n: int) -> bool:
     assert n >= 0
     while n > 1:
@@ -63,6 +66,10 @@ class Character:
     def is_char(self, single_character_string: str) -> bool:
         assert len(single_character_string) == 1
         return self.m_byte == ord(single_character_string)
+
+    def equals(self, c) -> bool:
+        assert isinstance(c, Character)
+        return self.m_byte == c.m_byte
 
 
 def character_create(single_character_string: str) -> Character:
@@ -193,6 +200,72 @@ class Interval:
         assert self.lo() <= x
         self.m_hi = x
 
+    def fractional_from_absolute(self, f: float) -> float:
+        return (f - self.lo()) / self.width()
+
+    def width(self) -> float:
+        return self.hi() - self.lo()
+
 
 def interval_create(lo: float, hi: float) -> Interval:
     return Interval(lo, hi)
+
+
+class Maybeint:
+    def __init__(self, is_defined: bool, value: int):
+        self.m_is_defined = is_defined
+        self.m_value = value
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_is_defined, bool)
+        assert isinstance(self.m_value, int)
+        if not self.m_is_defined:
+            assert self.m_value < 0
+
+    def int(self) -> tuple[int, bool]:
+        if self.m_is_defined:
+            return self.m_value, True
+        else:
+            return -777, False
+
+    def is_undefined(self) -> bool:
+        return not self.is_defined()
+
+    def is_defined(self) -> bool:
+        return self.m_is_defined
+
+
+def maybeint_defined(value: int) -> Maybeint:
+    return Maybeint(True, value)
+
+
+def maybeint_undefined() -> Maybeint:
+    return Maybeint(False, -7777)
+
+
+def string_index_of_character(s: str, c: Character) -> tuple[int, bool]:
+    assert isinstance(c, Character)
+    for i in range(0, len(s)):
+        if character_from_string(s, i).equals(c):
+            return i, True
+    return -77, False
+
+
+def string_contains(s: str, c: Character) -> bool:
+    index, ok = string_index_of_character(s, c)
+    return ok
+
+
+def string_replace(s: str, old: Character, nu: Character) -> str:
+    result = ""
+    for i in range(0, len(s)):
+        c = character_from_string(s, i)
+        if c.equals(old):
+            result = result + nu.string()
+        else:
+            result = result + c.string()
+    return result
+
+
+log_root_two_pi = 0.5 * math.log(2 * math.pi)
