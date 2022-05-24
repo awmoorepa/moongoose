@@ -269,3 +269,11 @@ def string_replace(s: str, old: Character, nu: Character) -> str:
 
 
 log_root_two_pi = 0.5 * math.log(2 * math.pi)
+
+
+def string_from_float(x: float) -> str:
+    return f'{x}'
+
+
+def string_from_int(x: int) -> str:
+    return f'{x}'

@@ -1,5 +1,6 @@
 import enum
 
+import datset.amarrays
 import datset.dset as dat
 import datset.ambasic as bas
 import datset.amarrays as arr
@@ -128,7 +129,7 @@ class Noomset:
         return self.datset().pretty_strings()
 
     def pretty_string(self) -> str:
-        return self.pretty_strings().concatenate_fancy('','\n','')
+        return self.pretty_strings().concatenate_fancy('', '\n', '')
 
     def datset(self) -> dat.Datset:
         result = dat.datset_empty()
@@ -174,82 +175,91 @@ def noomset_empty(nns: Noomnames) -> Noomset:
     return Noomset(nns, arr.fmat_empty())
 
 
-class StringTransformer:
-    def __init__(self, nns: Noomnames, e2n: arr.Namer):
-        self.m_noomnames = nns
-        self.m_encoding_to_valname = e2n
+def categorical_noomname(cn: dat.Colname, vn: dat.Valname) -> Noomname:
+    s = cn.string() + '_is_' + vn.string()
+    return noomname_create(s)
+
+
+def categorical_noomnames(cn: dat.Colname, encoding_to_valname: dat.Valnames) -> Noomnames:
+    nns = noomnames_empty()
+    for enc in range(0, encoding_to_valname.len()):
+        nns.add(categorical_noomname(cn, encoding_to_valname.valname(enc)))
+    return nns
+
+
+class ValnameEncoder:
+    def __init__(self, nm: arr.Namer):
+        self.m_namer = nm
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_namer, arr.Namer)
+        self.m_namer.assert_ok()
+
+    def num_encodings(self) -> int:
+        return self.m_namer.len()
+
+    def encoding(self, vn: dat.Valname) -> tuple[int, bool]:
+        return self.m_namer.key_from_name(vn.string())
+
+
+def namer_from_encoding_to_valname(encoding_to_valname: dat.Valnames) -> arr.Namer:
+    nm = arr.namer_empty()
+    for i in range(0, encoding_to_valname.len()):
+        s = encoding_to_valname.valname(i).string()
+        assert not nm.contains(s)
+        nm.add(s)
+    return nm
+
+
+def valname_encoder_create(encoding_to_valname: dat.Valnames) -> ValnameEncoder:
+    nm = namer_from_encoding_to_valname(encoding_to_valname)
+    return ValnameEncoder(nm)
+
+
+class CatTransformer:
+    def __init__(self, cn: dat.Colname, encoding_to_valname: dat.Valnames):
+        self.m_noomnames = categorical_noomnames(cn, encoding_to_valname)
+        self.m_valname_encoder = valname_encoder_create(encoding_to_valname)
         self.assert_ok()
 
     def assert_ok(self):
         assert isinstance(self.m_noomnames, Noomnames)
         self.m_noomnames.assert_ok()
-        assert isinstance(self.m_encoding_to_valname, arr.Namer)
-        self.m_encoding_to_valname.assert_ok()
-        assert self.m_noomnames.len() == self.m_encoding_to_valname.len()
+        assert isinstance(self.m_valname_encoder, ValnameEncoder)
+        self.m_valname_encoder.assert_ok()
+        assert self.m_noomnames.len() == self.m_valname_encoder.num_encodings()
 
     def noomnames(self) -> Noomnames:
         return self.m_noomnames
 
-    def transform_string(self, valname: str):
+    def transform_valname(self, vn: dat.Valname):
         result = arr.floats_all_zero(self.num_encodings())
-        encoding, ok = self.encoding_from_valname(valname)
+        encoding, ok = self.encoding_from_valname(vn)
         if ok:
             result.set(encoding, 1.0)
         return result
 
     def num_encodings(self) -> int:
-        return self.m_encoding_to_valname.len()
+        return self.m_valname_encoder.num_encodings()
 
-    def encoding_from_valname(self, name: str) -> tuple[int, bool]:
-        return self.m_encoding_to_valname.key_from_name(name)
-
-
-def string_transformer_create(nns: Noomnames, encoding_to_valname: arr.Namer) -> StringTransformer:
-    return StringTransformer(nns, encoding_to_valname)
+    def encoding_from_valname(self, vn: dat.Valname) -> tuple[int, bool]:
+        return self.m_valname_encoder.encoding(vn)
 
 
-def string_transformer_from_named_column(cn: dat.Colname, row_to_valname: arr.Strings) -> StringTransformer:
-    vc_to_name = arr.namer_empty()
-    vc_to_frequency = arr.ints_empty()
-    for r in range(0, row_to_valname.len()):
-        s = row_to_valname.string(r)
-        vc, ok = vc_to_name.key_from_name(s)
-        if ok:
-            vc_to_frequency.increment(vc)
-        else:
-            vc = vc_to_name.len()
-            vc_to_name.add(s)
-            vc_to_frequency.add(1)
-            assert vc_to_name.name_from_key(vc) == s
-            assert vc_to_frequency.len() == vc + 1
+def cat_transformer_create(cn: dat.Colname, encoding_to_valname: dat.Valnames) -> CatTransformer:
+    return CatTransformer(cn, encoding_to_valname)
 
-    mcv = vc_to_frequency.argmax()
 
-    vc_to_encoding = arr.ints_empty()
-    encoding_to_valname = arr.namer_empty()
+def cat_transformer_from_named_column(cn: dat.Colname, cts: dat.Cats) -> CatTransformer:
+    value_to_frequency = cts.histogram()
+    mcv = value_to_frequency.argmax()
+    encoding_to_valname = dat.valnames_empty()
+    for v in range(0, cts.num_values()):
+        if v != mcv:
+            encoding_to_valname.add(cts.valname_from_value(v))
 
-    for vc in range(0, vc_to_frequency.len()):
-        encoding: int
-        if vc == mcv:
-            encoding = -777
-        else:
-            encoding = encoding_to_valname.len()
-            valname = vc_to_name.name_from_key(vc)
-            assert not encoding_to_valname.contains(valname)
-            encoding_to_valname.add(valname)
-
-        vc_to_encoding.add(encoding)
-
-    for vc in range(0, vc_to_encoding.len()):
-        encoding = vc_to_encoding.int(vc)
-        if vc == mcv:
-            assert encoding < 0
-        else:
-            assert vc_to_name.name_from_key(vc) == encoding_to_valname.name_from_key(encoding)
-
-    nns = noomnames_from_colname_and_valnames(cn, encoding_to_valname)
-
-    return string_transformer_create(nns, encoding_to_valname)
+    return cat_transformer_create(cn, encoding_to_valname)
 
 
 class Transtype(enum.Enum):
@@ -337,7 +347,7 @@ class Transformer:
         assert (tt == Transtype.constant) == self.m_maybecol.is_undefined()
 
         if tt == Transtype.string:
-            assert isinstance(self.m_data, StringTransformer)
+            assert isinstance(self.m_data, CatTransformer)
             self.m_data.assert_ok()
         elif tt == Transtype.float:
             assert isinstance(self.m_data, FloatTransformer)
@@ -353,7 +363,7 @@ class Transformer:
     def noomnames(self) -> Noomnames:
         tt = self.m_transtype
         if tt == Transtype.string:
-            return self.string_transformer().noomnames()
+            return self.cat_transformer().noomnames()
         elif tt == Transtype.float:
             return noomnames_singleton(self.float_transformer().noomname())
         elif tt == Transtype.bool:
@@ -363,7 +373,7 @@ class Transformer:
         else:
             bas.my_error("bad Transtype")
 
-    def string_transformer(self) -> StringTransformer:
+    def cat_transformer(self) -> CatTransformer:
         assert self.transtype() == Transtype.string
         return self.m_data
 
@@ -387,8 +397,8 @@ class Transformer:
             assert ok
             a = rw.atom(col)
             ct = a.coltype()
-            if ct == dat.Coltype.string:
-                return self.string_transformer().transform_string(a.string())
+            if ct == dat.Coltype.categorical:
+                return self.cat_transformer().transform_valname(a.valname())
             elif ct == dat.Coltype.float:
                 return self.float_transformer().transform_float(a.float())
             elif ct == dat.Coltype.bool:
@@ -414,8 +424,8 @@ def transformer_from_named_column(ds: dat.Datset, col: int) -> Transformer:
     cn = nc.colname()
     c = nc.column()
     maybe_col = bas.maybeint_defined(col)
-    if ct == dat.Coltype.string:
-        return Transformer(Transtype.string, maybe_col, string_transformer_from_named_column(cn, c.strings()))
+    if ct == dat.Coltype.categorical:
+        return Transformer(Transtype.string, maybe_col, cat_transformer_from_named_column(cn, c.cats()))
     elif ct == dat.Coltype.float:
         return Transformer(Transtype.float, maybe_col, float_transformer_from_named_column(cn, c.floats()))
     elif ct == dat.Coltype.bool:
@@ -514,7 +524,7 @@ def noomnames_from_strings(ss: arr.Strings) -> Noomnames:
     return nns
 
 
-def noomset_from_smat(sm: dat.Smat) -> tuple[Noomset, bas.Errmess]:
+def noomset_from_smat(sm: datset.amarrays.Smat) -> tuple[Noomset, bas.Errmess]:
     if sm.num_rows() < 2:
         return noomset_default(), bas.errmess_error("Need at least 2 rows")
 

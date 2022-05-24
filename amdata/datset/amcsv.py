@@ -310,6 +310,25 @@ def strings_array_from_strings_csv(ss: arr.Strings) -> tuple[arr.StringsArray, b
     return strings_array_from_string_stream_csv(sts)
 
 
+def row_indexed_smat_from_strings(ss: arr.Strings) -> tuple[arr.RowIndexedSmat, bas.Errmess]:
+    ssa, em = strings_array_from_strings_csv(ss)
+
+    if em.is_error():
+        return arr.row_indexed_smat_default(), em
+
+    print(f'ssa =\n{ssa.pretty_string()}')
+
+    return arr.row_indexed_smat_from_strings_array(ssa)
+
+
+def smat_from_strings(ss: arr.Strings) -> tuple[arr.Smat, bas.Errmess]:
+    ris, em = row_indexed_smat_from_strings(ss)
+    if em.is_error():
+        return arr.smat_default(), em
+
+    return arr.smat_from_row_indexed_smat(ris), bas.errmess_ok()
+
+
 def csv_test_ok(s: str, r: int, c: int, check: str):
     print(f'csv_test_ok(s,r={r},c={c},check)')
     print(f's = {s}')

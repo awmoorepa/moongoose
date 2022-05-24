@@ -102,13 +102,41 @@ class Floats:
         self.set(i, self.float(i) + delta)
 
     def dot_product(self, other) -> float:  # other is type Floats
-        assert isinstance(self, Floats)
-        assert self.len() == other.len
+        assert isinstance(other, Floats)
+        assert self.len() == other.len()
         result = 0.0
         for i in range(0, self.len()):
             result += self.float(i) * other.float(i)
 
         return result
+
+    def minus(self, other):  # other is type Floats and result is type Floats
+        assert isinstance(other, Floats)
+        assert self.len() == other.len()
+        result = floats_empty()
+        for i in range(0, self.len()):
+            result.add(self.float(i) - other.float(i))
+        return result
+
+    def pretty_string(self) -> str:
+        ss = self.strings()
+        assert isinstance(ss, Strings)
+        return ss.concatenate_fancy('{', ',', '}')
+
+    def strings(self):  # returns Strings
+        result = strings_empty()
+        for i in range(0, self.len()):
+            result.add(self.value_as_string(i))
+        return result
+
+    def deep_copy(self):  # returns Floats
+        result = floats_empty()
+        for i in range(0, self.len()):
+            result.add(self.float(i))
+        return result
+
+    def squared(self) -> float:
+        return self.dot_product(self)
 
 
 class Namer:
@@ -240,6 +268,139 @@ class Ints:
         assert self.int(result) == highest_value
         return result
 
+    def argmin(self):
+        assert self.len() > 0
+        result = 0
+        lowest_value = self.int(0)
+        for i in range(1, self.len()):
+            v = self.int(i)
+            if v < lowest_value:
+                result = i
+                lowest_value = v
+
+        assert self.int(result) == lowest_value
+        return result
+
+    def max(self):
+        return self.int(self.argmax())
+
+    def histogram(self):  # Returns Ints
+        result = ints_empty()
+        for i in range(0, self.len()):
+            v = self.int(i)
+            assert v >= 0
+            while result.len() <= v:
+                result.add(0)
+            result.increment(v)
+        return result
+
+    def min(self) -> int:
+        return self.int(self.argmin())
+
+    def invert_index(self):  # return Ints
+        print(f'invert_index input = {self.pretty_string()}')
+        print(f'invert_index sorted = {self.sort().pretty_string()}')
+        print(f'identity = {identity_ints(self.len()).pretty_string()}')
+
+        assert self.sort().equals(identity_ints(self.len()))
+        if self.len() > 0:
+            assert self.min() >= 0
+        result = ints_empty()
+        for i in range(0, self.len()):
+            v = self.int(i)
+            assert v >= 0
+            while result.len() <= v:
+                result.add(-777)
+            assert v < result.len()
+            assert result.int(v) < 0
+            result.set(v, i)
+
+        for v in range(0, result.len()):
+            i = result.int(v)
+            assert 0 <= i < self.len()
+            assert self.int(i) == v
+
+        assert isinstance(result, Ints)
+        return result
+
+    def sort(self):  # return Ints
+        print(f'sort: self = {self.pretty_string()}')
+        ios = self.indexes_of_sorted()
+        print(f'sort: indexes of sorted = {ios.pretty_string()}')
+        return self.subset(ios)
+
+    def indexes_of_sorted(self):  # return ints
+        return indexes_of_sorted(self.m_ints)
+
+    def subset(self, indexes):  # The 'indexes' argument has type Ints. returns Ints. result[j] = self[indexes[j]]
+        result = ints_empty()
+        for i in range(0, indexes.len()):
+            index = indexes.int(i)
+            result.add(self.int(index))
+        assert isinstance(result, Ints)
+        return result
+
+    def equals(self, other) -> bool:  # other is type Ints
+        assert isinstance(other, Ints)
+        le = self.len()
+        if other.len() != le:
+            return False
+
+        for i in range(0, le):
+            if self.int(i) != other.int(i):
+                return False
+
+        return True
+
+    def pretty_string(self) -> str:
+        ss = self.strings()
+        assert isinstance(ss, Strings)
+        return ss.concatenate_fancy('{', ',', '}')
+
+    def strings(self):  # returns object of type Strings
+        result = strings_empty()
+        for i in range(0, self.len()):
+            result.add(bas.string_from_int(self.int(i)))
+        assert isinstance(result, Strings)
+        return result
+
+    def contains_duplicates(self) -> bool:
+        dic = {}
+        for i in range(0, self.len()):
+            v = self.int(i)
+            if v in dic:
+                return True
+            else:
+                dic[v] = True
+        return False
+
+
+def indexes_of_sorted(li: list) -> Ints:
+    pairs = zip(range(0, len(li)), li)
+    sorted_pairs = sorted(pairs, key=lambda p: p[1])
+    result = ints_empty()
+    for pair in sorted_pairs:
+        result.add(pair[0])
+    assert isinstance(result, Ints)
+    assert result.len() == len(li)
+    assert result.min() == 0
+    assert result.max() == len(li) - 1
+    assert not result.contains_duplicates()
+
+    for r in range(0, len(li) - 1):
+        i0 = result.int(r)
+        i1 = result.int(r + 1)
+        assert li[i0] <= li[i1]
+
+    return result
+
+
+def identity_ints(n: int) -> Ints:
+    result = ints_empty()
+    for i in range(0, n):
+        result.add(i)
+    return result
+
 
 class Strings:
     def __init__(self, ss: list[str]):
@@ -262,7 +423,8 @@ class Strings:
     def len(self) -> int:
         return len(self.m_strings)
 
-    def string(self, i) -> str:
+    def string(self, i: int) -> str:
+        assert isinstance(i, int)
         assert 0 <= i < self.len()
         return self.m_strings[i]
 
@@ -325,6 +487,51 @@ class Strings:
         for i in range(0, other.len()):
             self.add(other.string(i))
 
+    def indexes_of_sorted(self) -> Ints:
+        return indexes_of_sorted(self.m_strings)
+
+    def subset(self, indexes: Ints):  # returns Strings
+        assert isinstance(indexes, Ints)
+        indexes.assert_ok()
+        result = strings_empty()
+        for i in range(0, indexes.len()):
+            index = indexes.int(i)
+            result.add(self.string(index))
+        return result
+
+    def equals(self, other) -> bool:  # other is of type strings
+        assert isinstance(other, Strings)
+        le = self.len()
+        if le != other.len():
+            return False
+        for i in range(0, le):
+            if self.string(i) != other.string(i):
+                return False
+        return True
+
+    def is_sorted(self) -> bool:
+        if self.len() <= 1:
+            return True
+
+        for i in range(0, self.len() - 1):
+            if self.string(i) > self.string(i + 1):
+                return False
+
+        return True
+
+    def with_many(self, other):  # other type Strings, result type Strings
+        assert isinstance(other, Strings)
+        result = self.deep_copy()
+        assert isinstance(result, Strings)
+        result.append(other)
+        return result
+
+    def deep_copy(self):  # return type Strings
+        result = strings_empty()
+        for i in range(0, self.len()):
+            result.add(self.string(i))
+        return result
+
 
 def strings_empty() -> Strings:
     return Strings([])
@@ -359,7 +566,7 @@ class StringsArray:
         return self.strings(r).string(c)
 
     def pretty_string(self) -> str:
-        return self.pretty_strings().concatenate_fancy('','\n','')
+        return self.pretty_strings().concatenate_fancy('', '\n', '')
 
     def pretty_strings(self) -> Strings:
         pad = "  "
@@ -490,6 +697,14 @@ def test_floats_bad(ls: list[str]):
     assert not ok
 
 
+def unit_test_index_sort():
+    ss = strings_from_split("i would have liked you to have been deep frozen too", bas.character_space())
+    ranks = ss.indexes_of_sorted()
+    ss2 = strings_from_split("been deep frozen have have i liked to too would you", bas.character_space())
+    ss3 = ss.subset(ranks)
+    assert ss2.equals(ss3)
+
+
 def unit_test():
     assert not bas.string_contains('hello_said_peter', bas.character_space())
     assert bas.string_contains('hello_said peter', bas.character_space())
@@ -498,6 +713,7 @@ def unit_test():
     test_floats_bad(["5", "5", "5p"])
     test_floats_bad(["5", "5 5", "5999"])
     unit_test_namer()
+    unit_test_index_sort()
 
 
 def strings_without_first_n_elements(ss: Strings, n: int) -> Strings:
@@ -520,6 +736,135 @@ def is_list_of_instances_of_strings_class(ssl: list) -> bool:
 
 def strings_default() -> Strings:
     return strings_empty()
+
+
+class RowIndexedSmat:
+    def __init__(self, first_row: Strings):
+        self.m_row_to_col_to_string = strings_array_empty()
+        self.m_row_to_col_to_string.add(first_row)
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_row_to_col_to_string, StringsArray)
+        assert self.num_rows() > 0
+        assert self.num_cols() > 0
+
+    def num_cols(self) -> int:
+        assert self.num_rows() > 0
+        return self.m_row_to_col_to_string.strings(0).len()
+
+    def column(self, c: int) -> Strings:
+        assert 0 <= c < self.num_cols()
+        result = strings_empty()
+        for r in range(0, self.num_rows()):
+            result.add(self.string(r, c))
+        return result
+
+    def num_rows(self) -> int:
+        return self.m_row_to_col_to_string.len()
+
+    def add(self, ss: Strings):
+        assert self.num_cols() == ss.len()
+        self.m_row_to_col_to_string.add(ss)
+
+    def string(self, r: int, c: int) -> str:
+        assert 0 <= r < self.num_rows()
+        assert 0 <= c < self.num_cols()
+        return self.m_row_to_col_to_string.strings(r).string(c)
+
+    def strings_from_row(self, r: int) -> Strings:
+        assert 0 <= r < self.num_rows()
+        return self.m_row_to_col_to_string.strings(r)
+
+    def pretty_strings(self) -> Strings:
+        return self.m_row_to_col_to_string.pretty_strings()
+
+    def pretty_string(self) -> str:
+        return self.pretty_strings().concatenate_fancy('', '\n', '')
+
+
+def row_indexed_smat_transpose(ris: RowIndexedSmat) -> RowIndexedSmat:
+    assert ris.num_cols() > 0
+
+    result = row_indexed_smat_single_row(ris.column(0))
+
+    for c in range(1, ris.num_cols()):
+        result.add(ris.column(c))
+
+    result.assert_ok()
+    return result
+
+
+class Smat:
+    def __init__(self, row_to_col_to_string: RowIndexedSmat):
+        self.m_row_to_col_to_string = row_to_col_to_string
+        self.m_col_to_row_to_string = row_indexed_smat_transpose(row_to_col_to_string)
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_row_to_col_to_string, RowIndexedSmat)
+        self.m_row_to_col_to_string.assert_ok()
+        assert isinstance(self.m_row_to_col_to_string, RowIndexedSmat)
+        self.m_col_to_row_to_string.assert_ok()
+
+        assert self.m_row_to_col_to_string.num_rows() == self.m_col_to_row_to_string.num_cols()
+        assert self.m_row_to_col_to_string.num_cols() == self.m_col_to_row_to_string.num_rows()
+
+        for r in range(0, self.num_rows()):
+            for c in range(0, self.num_cols()):
+                assert self.m_row_to_col_to_string.string(r, c) == self.m_col_to_row_to_string.string(c, r)
+
+    def num_rows(self) -> int:
+        return self.m_row_to_col_to_string.num_rows()
+
+    def num_cols(self) -> int:
+        return self.m_row_to_col_to_string.num_cols()
+
+    def column(self, c: int) -> Strings:
+        result = strings_empty()
+        for r in range(0, self.num_rows()):
+            result.add(self.string(r, c))
+        return result
+
+    def string(self, r: int, c: int) -> str:
+        return self.row(r).string(c)
+
+    def row(self, r: int) -> Strings:
+        assert 0 <= r < self.num_rows()
+        return self.m_row_to_col_to_string.strings_from_row(r)
+
+    def pretty_string(self) -> str:
+        return self.m_row_to_col_to_string.pretty_string()
+
+    def pretty_strings(self) -> Strings:
+        return self.strings_array().pretty_strings()
+
+    def strings_array(self) -> StringsArray:
+        result = strings_array_empty()
+        for i in range(0, self.num_rows()):
+            result.add(self.row(i))
+        return result
+
+    def extended_with_headings(self, top_left: str, left: Strings, top: Strings):  # returns Smat
+        assert self.num_rows() == left.len()
+        assert self.num_cols() == top.len()
+        first_row = strings_singleton(top_left).with_many(top)
+        result = row_indexed_smat_single_row(first_row)
+
+        for r in range(0, self.num_rows()):
+            row = strings_singleton(left.string(r)).with_many(self.row(r))
+            result.add(row)
+
+        return smat_from_row_indexed_smat(result)
+
+    def pretty_strings_with_headings(self, top_left: str, left: Strings, top: Strings) -> Strings:
+        extended = self.extended_with_headings(top_left, left, top)
+        assert isinstance(extended, Smat)
+        return extended.pretty_strings()
+
+
+def smat_single_row(first_row: Strings) -> Smat:
+    return smat_from_row_indexed_smat(row_indexed_smat_single_row(first_row))
 
 
 class Fmat:
@@ -572,6 +917,29 @@ class Fmat:
 
         return True
 
+    def times(self, x: Floats) -> Floats:
+        assert self.num_cols() == x.len()
+        result = floats_empty()
+        for i in range(0, self.num_rows()):
+            result.add(self.row(i).dot_product(x))
+        return result
+
+    def pretty_strings(self) -> Strings:
+        return self.smat().pretty_strings()
+
+    def row_indexed_smat(self) -> RowIndexedSmat:
+        assert self.num_rows() > 0
+        result = row_indexed_smat_single_row(self.row(0).strings())
+        for i in range(1, self.num_rows()):
+            result.add(self.row(i).strings())
+        return result
+
+    def smat(self) -> Smat:
+        return smat_from_row_indexed_smat(self.row_indexed_smat())
+
+    def pretty_strings_with_headings(self, top_left: str, left: Strings, top: Strings):
+        return self.smat().pretty_strings_with_headings(top_left, left, top)
+
 
 def fmat_empty():
     return Fmat()
@@ -592,3 +960,43 @@ def floats_singleton(f: float) -> Floats:
     result = floats_empty()
     result.add(f)
     return result
+
+
+def row_indexed_smat_single_row(first_row: Strings) -> RowIndexedSmat:
+    return RowIndexedSmat(first_row)
+
+
+def row_indexed_smat_unit(s: str) -> RowIndexedSmat:
+    return row_indexed_smat_single_row(strings_singleton(s))
+
+
+def row_indexed_smat_default():
+    return row_indexed_smat_unit('default')
+
+
+def row_indexed_smat_from_strings_array(ssa: StringsArray) -> tuple[RowIndexedSmat, bas.Errmess]:
+    if not ssa:
+        return row_indexed_smat_default(), bas.errmess_error(
+            "Can't make a row indexed smat from an empty array of strings")
+
+    result = row_indexed_smat_single_row(ssa.strings(0))
+    for r in range(1, ssa.len()):
+        ss = ssa.strings(r)
+        if ss.len() != result.num_cols():
+            return result, bas.errmess_error(
+                f'first row of csv file has {result.num_cols()} items, but row {r} has {ss.len()} items')
+        result.add(ss)
+
+    return result, bas.errmess_ok()
+
+
+def smat_from_row_indexed_smat(rsm: RowIndexedSmat) -> Smat:
+    return Smat(rsm)
+
+
+def smat_unit(s: str) -> Smat:
+    return smat_from_row_indexed_smat(row_indexed_smat_unit(s))
+
+
+def smat_default():
+    return smat_unit("default")

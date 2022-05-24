@@ -29,14 +29,18 @@ def run():
     # a.subcols('ascent', 'distance').explain()
     num.noomset_from_datset(a).explain()
 
-    output = a.named_column_from_string('is_happy')
+    output = a.named_column_from_string('sport')
     inputs = a.without_column(output)
-    mod = lea.learner_type_logistic().train(inputs, output)
-    assert isinstance(mod,lea.Model)
+    assert isinstance(inputs, dat.Datset)
+    mod = lea.learner_type_multinomial().train(inputs, output)
+    assert isinstance(mod, lea.Model)
     mod.explain()
-    row = inputs.row(0)
-    print(f'predict is_happy for this row: {row.string()}')
-    mod.predict(row).explain()
+
+    for i in range(inputs.num_rows()):
+        rw = inputs.row(i)
+        assert isinstance(rw, dat.Row)
+        print(f'predict is_happy for this row: {rw.string()}')
+        mod.predict(rw).explain()
 
 
 # Press the green button in the gutter to run the script.
