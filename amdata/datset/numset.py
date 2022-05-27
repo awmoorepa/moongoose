@@ -86,7 +86,6 @@ def noomnames_empty() -> Noomnames:
 
 
 def noomname_create(name_as_string: str) -> Noomname:
-    print(f'len({name_as_string}) = {len(name_as_string)}')
     assert len(name_as_string) > 0
     spa = bas.character_space()
     und = bas.character_create('_')
@@ -132,7 +131,7 @@ class Noomset:
         return self.pretty_strings().concatenate_fancy('', '\n', '')
 
     def datset(self) -> dat.Datset:
-        result = dat.datset_empty()
+        result = dat.datset_empty(self.num_rows())
         for i in range(0, self.num_cols()):
             nc = self.named_column(i)
             result.add(nc)

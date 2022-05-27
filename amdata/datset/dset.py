@@ -461,7 +461,8 @@ def row_empty() -> Row:
 
 
 class Datset:
-    def __init__(self, ncs: list[NamedColumn]):
+    def __init__(self, n_rows: int, ncs: list[NamedColumn]):  # n_rows must == col length
+        self.m_num_rows = n_rows
         self.m_named_columns = ncs
         self.assert_ok()
 
@@ -478,6 +479,8 @@ class Datset:
         for nc in self.m_named_columns:
             assert isinstance(nc, NamedColumn)
             nc.assert_ok()
+            assert self.m_num_rows == nc.num_rows()
+
         assert not self.colnames().contains_duplicates()
 
     def colnames(self) -> Colnames:
@@ -487,6 +490,8 @@ class Datset:
         return result
 
     def pretty_strings(self) -> arr.Strings:
+        if self.num_cols() == 0:
+            return arr.strings_singleton(f'datset with {self.num_rows()} row(s) and no columns')
         return self.strings_array().pretty_strings()
 
     def pretty_string(self) -> str:
@@ -501,8 +506,7 @@ class Datset:
         return result
 
     def num_rows(self) -> int:
-        assert self.num_cols() > 0
-        return self.column(0).num_rows()
+        return self.m_num_rows
 
     def num_cols(self) -> int:
         return self.colnames().len()
@@ -527,7 +531,7 @@ class Datset:
         return self.named_column(c).colname()
 
     def subcols_from_ints(self, cs: arr.Ints):  # returns Datset
-        ds = datset_empty()
+        ds = datset_empty(self.num_rows())
         for i in range(0, cs.len()):
             ds.add(self.named_column(cs.int(i)))
         return ds
@@ -588,15 +592,15 @@ class Datset:
         return self.without_colid(col)
 
     def without_colid(self, col: int):  # returns datset
-        result = datset_empty()
+        result = datset_empty(self.num_rows())
         for c in range(0, self.num_cols()):
             if not c == col:
                 result.add(self.named_column(c))
         return result
 
 
-def datset_empty() -> Datset:
-    return Datset([])
+def datset_empty(n_rows: int) -> Datset:
+    return Datset(n_rows, [])
 
 
 def is_legal_datid(datid_as_string: str) -> bool:
@@ -691,7 +695,7 @@ def strings_load_result_ok(ss: arr.Strings) -> StringsLoadResult:
 
 
 def datset_default() -> Datset:
-    return datset_empty()
+    return datset_empty(1)
 
 
 def test_string():
@@ -699,7 +703,7 @@ def test_string():
         4/22/22, 15, ann, hiking\n
         4/22/22, 15, bob robertson, hiking\n
         4/22/22, 16, jan, swimming\n
-        4/22/22, 09, jan, swimming\n
+        4/22/22, 16, jan, hiking\n
         4/22/22, 12, ann, hiking\n"""
     return s
 
@@ -932,7 +936,7 @@ def datset_from_smat(sm: Smat) -> tuple[Datset, bas.Errmess]:
     if em.is_error():
         return datset_default(), em
 
-    ds = datset_empty()
+    ds = datset_empty(sm.num_rows()-1)
     for nc in ncs:
         if ds.contains_colname(nc.colname()):
             return datset_default(), bas.errmess_error("datset has multiple columns with same name")

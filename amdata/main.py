@@ -29,6 +29,7 @@ def run():
     # a.subcols('ascent', 'distance').explain()
     num.noomset_from_datset(a).explain()
 
+    print('\n**********************\n\n')
     output = a.named_column_from_string('sport')
     inputs = a.without_column(output)
     assert isinstance(inputs, dat.Datset)

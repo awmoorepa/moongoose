@@ -72,7 +72,7 @@ def q_from_y(y_k: dat.Atom) -> float:
 penalty_parameter: float = 0.0001
 
 
-def penalty_second_derivative() -> float:
+def ws_penalty_second_derivative() -> float:
     return penalty_parameter * 2
 
 
@@ -103,7 +103,7 @@ class Weights:
             x_k = inputs.row(r)
             y_k = output.atom(r)
             result += self.loglike_second_derivative_from_row(x_k, y_k, lt, col)
-        return result - penalty_second_derivative()
+        return result - ws_penalty_second_derivative()
 
     def increment(self, col: int, delta: float):
         self.m_weights.increment(col, delta)
@@ -185,10 +185,13 @@ class Weights:
         return weights_create(fs)
 
     def penalty(self) -> float:
-        return penalty_parameter * self.times(self.floats())
+        return penalty_parameter * self.sum_squares()
 
     def penalty_derivative(self, col: int) -> float:
         return penalty_parameter * 2 * self.weight(col)
+
+    def sum_squares(self) -> float:
+        return self.times(self.floats())
 
 
 class Modnames:
@@ -289,6 +292,10 @@ class ModelLinear:
         return self.m_sdev
 
 
+def wsa_penalty_second_derivative() -> float:
+    return penalty_parameter * 2.0
+
+
 class WeightsArray:
     def __init__(self, n_cols: int):
         self.m_num_cols = n_cols
@@ -324,7 +331,7 @@ class WeightsArray:
         result = 0.0
         for k in range(0, x.num_rows()):
             result += self.loglike_k(x, y, k)
-        return result
+        return result - self.penalty()
 
     def pretty_string(self, ms: Modnames, vns: dat.Valnames) -> str:
         return self.pretty_strings(ms, vns).concatenate_fancy('', '\n', '')
@@ -378,6 +385,18 @@ class WeightsArray:
     def num_elements_in_each_weights_vector(self) -> int:
         return self.m_num_cols
 
+    def penalty(self) -> float:
+        return penalty_parameter * self.sum_squares()
+
+    def penalty_derivative(self, i, j):
+        return penalty_parameter * 2 * self.weights(i).weight(j)
+
+    def sum_squares(self) -> float:
+        result = 0.0
+        for i in range(0, self.num_values()):
+            result += self.weights(i).sum_squares()
+        return result
+
 
 def weights_array_empty(n_cols: int) -> WeightsArray:
     return WeightsArray(n_cols)
@@ -393,6 +412,7 @@ def weights_array_zero(n_values: int, n_cols: int) -> WeightsArray:
 
 
 def multinomial_train_weights(x: arr.Fmat, y: arr.Ints, ms: Modnames, vns: dat.Valnames) -> WeightsArray:
+    print(f'entering multinomial_train_weights. y = {y.pretty_string()}')
     assert x.num_rows() == y.len()
     n_values = y.max() + 1
     n_cols = x.num_cols()
@@ -403,28 +423,44 @@ def multinomial_train_weights(x: arr.Fmat, y: arr.Ints, ms: Modnames, vns: dat.V
     iteration = 0
     while True:
         ll_old = ll
-        for i in range(1, n_values):  # the math would have redundancy which is solved by zeroing first row of weights
-            for col in range(0, n_cols):
-                s = wsa.pretty_string(ms, vns)
-                print(f'iter {iteration}, val {i},col {col}: ll = {ll}, ws =\n{s}')
-
+        for j in range(0, x.num_cols()):
+            for i in range(1, n_values):  # math would've redundancy which is solved by zeroing first row of weights
+                print(f'iteration {iteration}, j = {j}, i = {i}, wsa =\n{wsa.pretty_string(ms, vns)}')
                 aaa = 0.0
                 bbb = 0.0
                 ccc = 0.0
-
                 for k in range(0, x.num_rows()):
-                    llk = wsa.loglike_k(x, y, k)
-                    xki = x.float(k, y.int(k))
-                    ll_prime_ki = xki * (1 - llk)
-                    ll_double_prime_ki = xki * xki * (llk - 1)
+                    # pik denotes P(class = i | x_k, Weights)
+                    # eik = exp(Weights[i] . x_k)
+                    u_to_euk = arr.floats_empty()
+                    for u in range(0, n_values):
+                        quk = wsa.weights(u).times(x.row(k))
+                        euk = math.exp(quk)
+                        u_to_euk.add(euk)
 
-                    aaa += llk
-                    bbb += ll_prime_ki
-                    ccc += ll_double_prime_ki
+                    sk = u_to_euk.sum()
+                    pik = u_to_euk.float(i) / sk
+                    prob_yk_given_xk = u_to_euk.float(y.int(k)) / sk
+
+                    ll_k = math.log(prob_yk_given_xk)
+                    aaa += ll_k
+                    xkj = x.float(k, j)
+                    d_ll_k_by_dw_ij = -xkj * pik
+                    if i == y.int(k):
+                        d_ll_k_by_dw_ij += xkj
+
+                    d2_ll_k_by_dw2_ij = -xkj * xkj * pik * (1 - pik)
+
+                    bbb += d_ll_k_by_dw_ij
+                    ccc += d2_ll_k_by_dw2_ij
+
+                aaa -= wsa.penalty()
+                bbb -= wsa.penalty_derivative(i, j)
+                ccc -= wsa_penalty_second_derivative()
 
                 assert bas.loosely_equals(aaa, ll)
 
-                print(f'll(h) = {aaa} + {bbb} * h + {ccc} * h^2')
+                print(f'll(W+h*I_{i}) = {aaa} + {bbb} * h + {ccc} * h^2')
                 # ll = aaa + bbb * h + 0.5 * ccc * h^2
                 # h_star = -bbb/ccc
                 assert math.fabs(ccc) > 1e-20
@@ -432,7 +468,7 @@ def multinomial_train_weights(x: arr.Fmat, y: arr.Ints, ms: Modnames, vns: dat.V
                 print(f'h_star = {h_star}')
                 wsa2 = wsa.deep_copy()
                 assert isinstance(wsa2, WeightsArray)
-                wsa2.increment(i, col, h_star)
+                wsa2.increment(i, j, h_star)
                 ll_new2 = wsa2.loglike(x, y)
                 print(f'll_new2 = {ll_new2}')
                 if ll_new2 > ll:
@@ -442,7 +478,7 @@ def multinomial_train_weights(x: arr.Fmat, y: arr.Ints, ms: Modnames, vns: dat.V
                 else:
                     print('no improvement')
 
-        if math.fabs(ll - ll_old) / (math.fabs(ll - start_ll)) < 1e-6:
+        if math.fabs(ll - ll_old) / (1e-5 + math.fabs(ll - start_ll)) < 1e-6:
             return wsa
 
         iteration += 1
@@ -462,7 +498,8 @@ class ModelMultinomial:
         self.m_valnames.assert_ok()
         assert isinstance(self.m_weights_array, WeightsArray)
         assert self.m_weights_array.num_values() == self.m_valnames.len()
-        assert self.m_weights_array.num_elements_in_each_weights_vector() == self.m_modnames.transformers().noomnames().len()
+        n_elements = self.m_weights_array.num_elements_in_each_weights_vector()
+        assert n_elements == self.m_modnames.transformers().noomnames().len()
 
     def pretty_strings(self) -> arr.Strings:
         result = arr.strings_empty()
