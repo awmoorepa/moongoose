@@ -478,7 +478,7 @@ def multinomial_train_weights(x: arr.Fmat, y: arr.Ints, ms: Modnames, vns: dat.V
                 else:
                     print('no improvement')
 
-        if math.fabs(ll - ll_old) / (1e-5 + math.fabs(ll - start_ll)) < 1e-6:
+        if math.fabs(ll - ll_old) / (1e-5 + math.fabs(ll - start_ll)) < 1e-3:
             return wsa
 
         iteration += 1

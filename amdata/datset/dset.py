@@ -699,12 +699,12 @@ def datset_default() -> Datset:
 
 
 def test_string():
-    s = """date,hour,person,sport\n
-        4/22/22, 15, ann, hiking\n
-        4/22/22, 15, bob robertson, hiking\n
-        4/22/22, 16, jan, swimming\n
-        4/22/22, 16, jan, hiking\n
-        4/22/22, 12, ann, hiking\n"""
+    s = """date,hour,person,weight\n
+        4/22/22, 15, ann, 20\n
+        4/22/22, 15, bob robertson, 10\n
+        4/22/22, 16, jan, 15\n
+        4/22/22, 16, jan, 15\n
+        4/22/22, 12, ann, 20\n"""
     return s
 
 

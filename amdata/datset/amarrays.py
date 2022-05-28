@@ -56,10 +56,14 @@ class Floats:
     def add(self, f: float):
         self.m_floats.append(f)
 
+    def range(self):
+        for f in self.m_floats:
+            yield f
+
     def sum(self) -> float:
         result = 0.0
-        for i in range(0, self.len()):
-            result += self.float(i)
+        for f in self.range():
+            result += f
         return result
 
     def len(self) -> int:
@@ -83,11 +87,6 @@ class Floats:
     def set(self, index: int, v: float):
         assert 0 <= index < self.len()
         self.m_floats[index] = v
-
-    def append(self, others):
-        assert isinstance(others, Floats)
-        for i in range(0, others.len()):
-            self.add(others.float(i))
 
     def loosely_equals(self, other) -> bool:
         n = self.len()
@@ -137,6 +136,11 @@ class Floats:
 
     def squared(self) -> float:
         return self.dot_product(self)
+
+    def append(self, others):  # others are of type floats
+        assert isinstance(others, Floats)
+        for i in range(0, others.len()):
+            self.add(others.float(i))
 
 
 class Namer:
@@ -255,6 +259,10 @@ class Ints:
         assert 0 <= i < self.len()
         self.m_ints[i] += 1
 
+    def range(self):
+        for i in self.m_ints:
+            yield i
+
     def argmax(self):
         assert self.len() > 0
         result = 0
@@ -286,8 +294,7 @@ class Ints:
 
     def histogram(self):  # Returns Ints
         result = ints_empty()
-        for i in range(0, self.len()):
-            v = self.int(i)
+        for v in self.range():
             assert v >= 0
             while result.len() <= v:
                 result.add(0)
@@ -298,10 +305,6 @@ class Ints:
         return self.int(self.argmin())
 
     def invert_index(self):  # return Ints
-        print(f'invert_index input = {self.pretty_string()}')
-        print(f'invert_index sorted = {self.sort().pretty_string()}')
-        print(f'identity = {identity_ints(self.len()).pretty_string()}')
-
         assert self.sort().equals(identity_ints(self.len()))
         if self.len() > 0:
             assert self.min() >= 0
@@ -324,9 +327,7 @@ class Ints:
         return result
 
     def sort(self):  # return Ints
-        print(f'sort: self = {self.pretty_string()}')
         ios = self.indexes_of_sorted()
-        print(f'sort: indexes of sorted = {ios.pretty_string()}')
         return self.subset(ios)
 
     def indexes_of_sorted(self):  # return ints
@@ -484,8 +485,8 @@ class Strings:
 
     def append(self, other):  # other is type Strings
         assert isinstance(other, Strings)
-        for i in range(0, other.len()):
-            self.add(other.string(i))
+        for s in other.range():
+            self.add(s)
 
     def indexes_of_sorted(self) -> Ints:
         return indexes_of_sorted(self.m_strings)
@@ -531,6 +532,10 @@ class Strings:
         for i in range(0, self.len()):
             result.add(self.string(i))
         return result
+
+    def range(self):
+        for s in self.m_strings:
+            yield s
 
 
 def strings_empty() -> Strings:
@@ -578,8 +583,7 @@ class StringsArray:
 
     def col_to_num_chars(self) -> Ints:
         result = ints_empty()
-        for r in range(0, self.len()):
-            ss = self.strings(r)
+        for ss in self.range():
             for c in range(0, ss.len()):
                 le = len(ss.string(c))
                 assert c <= result.len()
@@ -588,6 +592,10 @@ class StringsArray:
                 else:
                     result.set(c, max(le, result.int(c)))
         return result
+
+    def range(self):
+        for ss in self.m_strings_array:
+            yield ss
 
 
 def strings_array_empty() -> StringsArray:
@@ -719,7 +727,8 @@ def unit_test():
 def strings_without_first_n_elements(ss: Strings, n: int) -> Strings:
     result = strings_empty()
     for i in range(n, ss.len()):
-        result.add(ss.string(i))
+        s = ss.string(i)
+        result.add(s)
     return result
 
 
@@ -820,10 +829,16 @@ class Smat:
     def num_cols(self) -> int:
         return self.m_row_to_col_to_string.num_cols()
 
-    def column(self, c: int) -> Strings:
+    def column_old(self, c: int) -> Strings:
         result = strings_empty()
         for r in range(0, self.num_rows()):
             result.add(self.string(r, c))
+        return result
+
+    def column(self, c: int) -> Strings:
+        result = self.m_col_to_row_to_string.strings_from_row(c)
+        if bas.expensive_assertions:
+            assert result.equals(self.column_old(c))
         return result
 
     def string(self, r: int, c: int) -> str:

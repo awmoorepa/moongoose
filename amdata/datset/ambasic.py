@@ -63,7 +63,7 @@ class Character:
     def string(self) -> str:
         return chr(self.m_byte)
 
-    def is_char(self, single_character_string: str) -> bool:
+    def equals_string(self, single_character_string: str) -> bool:
         assert len(single_character_string) == 1
         return self.m_byte == ord(single_character_string)
 
@@ -277,3 +277,6 @@ def string_from_float(x: float) -> str:
 
 def string_from_int(x: int) -> str:
     return f'{x}'
+
+
+expensive_assertions = True

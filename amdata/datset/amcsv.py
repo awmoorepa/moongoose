@@ -206,11 +206,11 @@ def next_csv_row_output(ss: StringStream) -> tuple[arr.Strings, bas.Errmess, Nex
         if cs.state_is(Cstate.begin_line):
             if finished:
                 cs.next(Cstate.finish)
-            elif c.is_char(','):
+            elif c.equals_string(','):
                 cs.emit_word(Cstate.begin_word)
-            elif c.is_char('"'):
+            elif c.equals_string('"'):
                 cs.next(Cstate.in_string)
-            elif c.is_char('\n'):
+            elif c.equals_string('\n'):
                 cs.next(Cstate.begin_line)
             else:
                 cs.emit_char(c, Cstate.in_word)
@@ -218,11 +218,11 @@ def next_csv_row_output(ss: StringStream) -> tuple[arr.Strings, bas.Errmess, Nex
         elif cs.state_is(Cstate.begin_word):
             if finished:
                 cs.emit_word(Cstate.finish)
-            elif c.is_char(','):
+            elif c.equals_string(','):
                 cs.emit_word(Cstate.begin_word)
-            elif c.is_char('"'):
+            elif c.equals_string('"'):
                 cs.next(Cstate.in_string)
-            elif c.is_char('\n'):
+            elif c.equals_string('\n'):
                 cs.emit_word(Cstate.end_line)
             else:
                 cs.emit_char(c, Cstate.in_word)
@@ -230,9 +230,9 @@ def next_csv_row_output(ss: StringStream) -> tuple[arr.Strings, bas.Errmess, Nex
         elif cs.state_is(Cstate.in_string):
             if finished:
                 cs.emit_error("File ended in the middle of a quoted string")
-            elif c.is_char('\n'):
+            elif c.equals_string('\n'):
                 cs.emit_string("<return>", Cstate.in_string)
-            elif c.is_char('"'):
+            elif c.equals_string('"'):
                 cs.next(Cstate.end_string)
             else:
                 cs.emit_char(c, Cstate.in_string)
@@ -240,11 +240,11 @@ def next_csv_row_output(ss: StringStream) -> tuple[arr.Strings, bas.Errmess, Nex
         elif cs.state_is(Cstate.end_string):
             if finished:
                 cs.emit_word(Cstate.finish)
-            elif c.is_char(','):
+            elif c.equals_string(','):
                 cs.emit_word(Cstate.begin_word)
-            elif c.is_char('"'):
+            elif c.equals_string('"'):
                 cs.emit_char(c, Cstate.in_string)
-            elif c.is_char('\n'):
+            elif c.equals_string('\n'):
                 cs.emit_word(Cstate.end_line)
             else:
                 cs.emit_error(
@@ -253,11 +253,11 @@ def next_csv_row_output(ss: StringStream) -> tuple[arr.Strings, bas.Errmess, Nex
         elif cs.state_is(Cstate.in_word):
             if finished:
                 cs.emit_word(Cstate.finish)
-            elif c.is_char(','):
+            elif c.equals_string(','):
                 cs.emit_word(Cstate.begin_word)
-            elif c.is_char('"'):
+            elif c.equals_string('"'):
                 cs.emit_error("I don't expect to find a quote symbol inside an unquoted string")
-            elif c.is_char('\n'):
+            elif c.equals_string('\n'):
                 cs.emit_word(Cstate.end_line)
             else:
                 cs.emit_char(c, Cstate.in_word)

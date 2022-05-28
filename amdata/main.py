@@ -3,6 +3,7 @@
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
+import datset.ambasic as bas
 import datset.amarrays as arr
 import datset.amcsv as csv
 import datset.dset as dat
@@ -18,6 +19,8 @@ def unit_tests():
 
 
 def run():
+    if bas.expensive_assertions:
+        print("**** WARNING: Expensive Assertions switched on")
     print('*******************************************************************')
     unit_tests()
     # Use a breakpoint in the code line below to debug your script.
@@ -30,17 +33,17 @@ def run():
     num.noomset_from_datset(a).explain()
 
     print('\n**********************\n\n')
-    output = a.named_column_from_string('sport')
+    output = a.named_column_from_string('weight')
     inputs = a.without_column(output)
     assert isinstance(inputs, dat.Datset)
-    mod = lea.learner_type_multinomial().train(inputs, output)
+    mod = lea.learner_type_linear().train(inputs, output)
     assert isinstance(mod, lea.Model)
     mod.explain()
 
     for i in range(inputs.num_rows()):
         rw = inputs.row(i)
         assert isinstance(rw, dat.Row)
-        print(f'predict is_happy for this row: {rw.string()}')
+        print(f'predict {output.colname().string()} for this row: {rw.string()}')
         mod.predict(rw).explain()
 
 
