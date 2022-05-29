@@ -265,7 +265,7 @@ class Transtype(enum.Enum):
     constant = 0
     bool = 1
     float = 2
-    string = 3
+    categorical = 3
 
 
 def noomnames_singleton(nn: Noomname) -> Noomnames:
@@ -345,7 +345,7 @@ class Transformer:
 
         assert (tt == Transtype.constant) == self.m_maybecol.is_undefined()
 
-        if tt == Transtype.string:
+        if tt == Transtype.categorical:
             assert isinstance(self.m_data, CatTransformer)
             self.m_data.assert_ok()
         elif tt == Transtype.float:
@@ -361,7 +361,7 @@ class Transformer:
 
     def noomnames(self) -> Noomnames:
         tt = self.m_transtype
-        if tt == Transtype.string:
+        if tt == Transtype.categorical:
             return self.cat_transformer().noomnames()
         elif tt == Transtype.float:
             return noomnames_singleton(self.float_transformer().noomname())
@@ -373,7 +373,7 @@ class Transformer:
             bas.my_error("bad Transtype")
 
     def cat_transformer(self) -> CatTransformer:
-        assert self.transtype() == Transtype.string
+        assert self.transtype() == Transtype.categorical
         return self.m_data
 
     def float_transformer(self) -> FloatTransformer:
@@ -395,12 +395,11 @@ class Transformer:
             col, ok = self.col()
             assert ok
             a = rw.atom(col)
-            ct = a.coltype()
-            if ct == dat.Coltype.categorical:
+            if tt == Transtype.categorical:
                 return self.cat_transformer().transform_valname(a.valname())
-            elif ct == dat.Coltype.float:
+            elif tt == Transtype.float:
                 return self.float_transformer().transform_float(a.float())
-            elif ct == dat.Coltype.bool:
+            elif tt == Transtype.bool:
                 return self.bool_transformer().transform_bool(a.bool())
             else:
                 bas.my_error("bad coltype")
@@ -424,7 +423,7 @@ def transformer_from_named_column(ds: dat.Datset, col: int) -> Transformer:
     c = nc.column()
     maybe_col = bas.maybeint_defined(col)
     if ct == dat.Coltype.categorical:
-        return Transformer(Transtype.string, maybe_col, cat_transformer_from_named_column(cn, c.cats()))
+        return Transformer(Transtype.categorical, maybe_col, cat_transformer_from_named_column(cn, c.cats()))
     elif ct == dat.Coltype.float:
         return Transformer(Transtype.float, maybe_col, float_transformer_from_named_column(cn, c.floats()))
     elif ct == dat.Coltype.bool:

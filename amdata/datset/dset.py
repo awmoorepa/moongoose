@@ -50,64 +50,128 @@ class Valname:
         return self.string() == other.string()
 
 
+def valname_default() -> Valname:
+    return valname_from_string("plop")
+
+
 class Atom:
-    def __init__(self, ct: Coltype, data):
-        self.m_coltype = ct
-        self.m_data = data
-        self.assert_ok()
-
     def assert_ok(self):
-        assert isinstance(self.m_coltype, Coltype)
-        ct = self.m_coltype
-        if ct == Coltype.categorical:
-            assert isinstance(self.m_data, Valname)
-        elif ct == Coltype.float:
-            assert isinstance(self.m_data, float)
-        elif ct == Coltype.bool:
-            assert isinstance(self.m_data, bool)
-        else:
-            bas.my_error("bad coltype")
-
-    def coltype(self) -> Coltype:
-        return self.m_coltype
-
-    def valname(self) -> Valname:
-        assert self.coltype() == Coltype.categorical
-        assert isinstance(self.m_data, Valname)
-        return self.m_data
-
-    def float(self) -> float:
-        assert self.coltype() == Coltype.float
-        assert isinstance(self.m_data, float)
-        return self.m_data
-
-    def bool(self) -> bool:
-        assert self.coltype() == Coltype.bool
-        assert isinstance(self.m_data, bool)
-        return self.m_data
+        bas.my_error(f"assert_ok {self} base class not available")
 
     def pretty_string(self) -> str:
-        ct = self.coltype()
-        if ct == Coltype.categorical:
-            return self.valname().string()
-        elif ct == Coltype.float:
-            return bas.string_from_float(self.float())
-        elif ct == Coltype.bool:
-            return bas.string_from_bool(self.bool())
-        else:
-            bas.my_error("bad coltype")
+        bas.my_error(f"pretty_string {self} base class not available")
+        return ''
+
+    def float(self) -> float:
+        bas.my_error(f'float {self} base class not available')
+        return -7e77
+
+    def valname(self) -> Valname:
+        bas.my_error(f'categorical {self} base class not available')
+        return valname_default()
+
+    def bool(self) -> bool:
+        bas.my_error(f'bool {self} base class not available')
+        return False
+
+
+class AtomCategorical(Atom):
+    def __init__(self, v: Valname):
+        self.m_valname = v
+
+    def pretty_string(self) -> str:
+        return self.m_valname.string()
+
+    def valname(self) -> Valname:
+        return self.m_valname
+
+
+class AtomFloat(Atom):
+    def __init__(self, f: float):
+        self.m_float = f
+
+    def pretty_string(self) -> str:
+        return bas.string_from_float(self.m_float)
+
+    def float(self) -> float:
+        return self.m_float
+
+
+class AtomBool(Atom):
+    def __init__(self, b: bool):
+        self.m_bool = b
+
+    def bool(self) -> bool:
+        return self.m_bool
+
+    def pretty_string(self) -> str:
+        return bas.string_from_bool(self.m_bool)
+
+
+# class Atom:
+#     def __init__(self, ct: Coltype, data):
+#         self.m_coltype = ct
+#         self.m_data = data
+#         self.assert_ok()
+#
+#     def assert_ok(self):
+#         assert isinstance(self.m_coltype, Coltype)
+#         ct = self.m_coltype
+#         if ct == Coltype.categorical:
+#             assert isinstance(self.m_data, Valname)
+#         elif ct == Coltype.float:
+#             assert isinstance(self.m_data, float)
+#         elif ct == Coltype.bool:
+#             assert isinstance(self.m_data, bool)
+#         else:
+#             bas.my_error("bad coltype")
+#
+#     def coltype(self) -> Coltype:
+#         return self.m_coltype
+#
+#     def valname(self) -> Valname:
+#         assert self.coltype() == Coltype.categorical
+#         assert isinstance(self.m_data, Valname)
+#         return self.m_data
+#
+#     def float(self) -> float:
+#         assert self.coltype() == Coltype.float
+#         assert isinstance(self.m_data, float)
+#         return self.m_data
+#
+#     def bool(self) -> bool:
+#         assert self.coltype() == Coltype.bool
+#         assert isinstance(self.m_data, bool)
+#         return self.m_data
+#
+#     def pretty_string(self) -> str:
+#         ct = self.coltype()
+#         if ct == Coltype.categorical:
+#             return self.valname().string()
+#         elif ct == Coltype.float:
+#             return bas.string_from_float(self.float())
+#         elif ct == Coltype.bool:
+#             return bas.string_from_bool(self.bool())
+#         else:
+#             bas.my_error("bad coltype")
 
 
 def atom_from_valname(vn: Valname) -> Atom:
-    return Atom(Coltype.categorical, vn)
+    result = AtomCategorical(vn)
+    assert isinstance(result, AtomCategorical)
+    assert isinstance(result, Atom)
+    return result
 
 
 def atom_from_float(f: float) -> Atom:
-    return Atom(Coltype.float, f)
+    result = AtomFloat(f)
+    assert isinstance(result, AtomFloat)
+    assert isinstance(result, Atom)
+    return result
 
 
 def atom_from_bool(b: bool) -> Atom:
-    return Atom(Coltype.bool, b)
+    return AtomBool(b)
 
 
 class Valnames:
@@ -200,8 +264,8 @@ class Cats:
         return self.m_row_to_value.histogram()
 
 
-def cats_create(row_to_value, value_to_name) -> Cats:
-    return Cats(row_to_value, value_to_name)
+def cats_create(row_to_value: arr.Ints, vns: Valnames) -> Cats:
+    return Cats(row_to_value, vns)
 
 
 def valnames_empty() -> Valnames:
@@ -325,8 +389,53 @@ class Column:
         return self.cats().valnames()
 
 
+def cats_default() -> Cats:
+    return cats_create(arr.ints_empty(), valnames_empty())
+
+
+class Kolumn:
+    def assert_ok(self):
+        bas.my_error(f'{self} base class')
+
+    def num_rows(self) -> int:
+        bas.my_error(f'{self} base class')
+        return -77
+
+    def coltype(self) -> Coltype:
+        bas.my_error(f'{self} base class')
+        return Coltype.bool
+
+    def atom(self, r: int) -> Atom:
+        bas.my_error(f'{self} {r} base')
+        return atom_from_bool(False)
+
+    def floats(self) -> arr.Floats:
+        bas.my_error(f'{self} base')
+        return arr.floats_empty()
+
+    def cats(self) -> Cats:
+        bas.my_error(f'{self} base')
+        return cats_default()
+
+    def valnames(self) -> Valnames:
+        bas.my_error(f'{self} base')
+        return valnames_empty()
+
+    def valname_from_row(self, r: int) -> Valname:
+        bas.my_error(f'{self} {r} base')
+        return valname_default()
+
+    def float(self, r: int) -> float:
+        bas.my_error(f'{self} {r} base')
+        return -7e77
+
+    def bool(self, r: int) -> bool:
+        bas.my_error(f'{self} {r} base')
+        return False
+
+
 class NamedColumn:
-    def __init__(self, cn: Colname, col: Column):
+    def __init__(self, cn: Colname, col: Kolumn):
         self.m_colname = cn
         self.m_column = col
         self.assert_ok()
@@ -334,13 +443,13 @@ class NamedColumn:
     def assert_ok(self):
         assert isinstance(self.m_colname, Colname)
         self.m_colname.assert_ok()
-        assert isinstance(self.m_column, Column)
+        assert isinstance(self.m_column, Kolumn)
         self.m_column.assert_ok()
 
     def colname(self) -> Colname:
         return self.m_colname
 
-    def column(self) -> Column:
+    def column(self) -> Kolumn:
         return self.m_column
 
     def num_rows(self) -> int:
@@ -511,7 +620,7 @@ class Datset:
     def num_cols(self) -> int:
         return self.colnames().len()
 
-    def column(self, c: int) -> Column:
+    def column(self, c: int) -> Kolumn:
         return self.named_column(c).column()
 
     def named_column(self, c: int) -> NamedColumn:
@@ -820,7 +929,7 @@ def datid_from_string(datid_as_string: str) -> tuple[Datid, bas.Errmess]:
         return datid_default(), bas.errmess_error(f"{datid_as_string} is not a legal filename")
 
 
-def named_column_create(cn: Colname, c: Column) -> NamedColumn:
+def named_column_create(cn: Colname, c: Kolumn) -> NamedColumn:
     return NamedColumn(cn, c)
 
 
@@ -828,11 +937,24 @@ def colname_create(s: str) -> Colname:
     return Colname(s)
 
 
-def column_from_bools(bs: arr.Bools) -> Column:
-    return Column(Coltype.bool, bs)
+class ColumnBool(Kolumn):
+    def __init__(self, bs: arr.Bools):
+        self.m_bools = bs
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert (isinstance(self.m_bools, arr.Bools))
+        self.m_bools.assert_ok()
+
+    def num_rows(self) -> int:
+        return self.m_bools.len()
 
 
-def column_default() -> Column:
+def column_from_bools(bs: arr.Bools) -> Kolumn:
+    return ColumnBool(bs)
+
+
+def column_default() -> Kolumn:
     return column_from_bools(arr.bools_singleton(False))
 
 
@@ -862,15 +984,38 @@ def coltype_from_strings(ss: arr.Strings) -> Coltype:
         return Coltype.float
 
 
-def column_from_floats(fs: arr.Floats) -> Column:
-    return Column(Coltype.float, fs)
+class ColumnFloats(Kolumn):
+    def __init__(self, fs: arr.Floats):
+        self.m_floats = fs
+
+    def num_rows(self) -> int:
+        return self.m_floats.len()
+
+    def assert_ok(self):
+        assert isinstance(self.m_floats, arr.Floats)
 
 
-def column_of_type_cats(cs: Cats) -> Column:
-    return Column(Coltype.categorical, cs)
+def column_from_floats(fs: arr.Floats) -> Kolumn:
+    return ColumnFloats(fs)
 
 
-def column_from_strings_choosing_coltype(ss: arr.Strings) -> Column:
+class ColumnCats(Kolumn):
+    def __init__(self, cs: Cats):
+        self.m_cats = cs
+
+    def assert_ok(self):
+        assert isinstance(self.m_cats, Cats)
+        self.m_cats.assert_ok()
+
+    def num_rows(self) -> int:
+        return self.m_cats.num_rows()
+
+
+def column_of_type_cats(cs: Cats) -> Kolumn:
+    return ColumnCats(cs)
+
+
+def column_from_strings_choosing_coltype(ss: arr.Strings) -> Kolumn:
     ct = coltype_from_strings(ss)
     if ct == Coltype.bool:
         bs, ok = arr.bools_from_strings(ss)
@@ -936,7 +1081,7 @@ def datset_from_smat(sm: Smat) -> tuple[Datset, bas.Errmess]:
     if em.is_error():
         return datset_default(), em
 
-    ds = datset_empty(sm.num_rows()-1)
+    ds = datset_empty(sm.num_rows() - 1)
     for nc in ncs:
         if ds.contains_colname(nc.colname()):
             return datset_default(), bas.errmess_error("datset has multiple columns with same name")

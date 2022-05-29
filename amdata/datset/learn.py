@@ -13,7 +13,7 @@ class Learntype(enum.Enum):
     linear = 1
     multinomial = 2
 
-    def loglike(self, beta_xs: arr.Floats, output: dat.Column) -> float:
+    def loglike(self, beta_xs: arr.Floats, output: dat.Kolumn) -> float:
         result = 0.0
         for r in range(0, beta_xs.len()):
             result += self.loglike_of_element(beta_xs.float(r), output.atom(r))
@@ -63,6 +63,7 @@ def learner_create(lt: Learntype) -> Learner:
 
 
 def q_from_y(y_k: dat.Atom) -> float:
+    assert isinstance(y_k, dat.AtomBool)
     if y_k.bool():
         return -1.0
     else:
@@ -85,11 +86,11 @@ class Weights:
         assert isinstance(self.m_weights, arr.Floats)
         self.m_weights.assert_ok()
 
-    def loglike(self, inputs: arr.Fmat, output: dat.Column, lt: Learntype) -> float:
+    def loglike(self, inputs: arr.Fmat, output: dat.Kolumn, lt: Learntype) -> float:
         beta_xs = self.premultiplied_by(inputs)
         return lt.loglike(beta_xs, output) - self.penalty()
 
-    def loglike_derivative(self, inputs: arr.Fmat, output: dat.Column, lt: Learntype, col: int) -> float:
+    def loglike_derivative(self, inputs: arr.Fmat, output: dat.Kolumn, lt: Learntype, col: int) -> float:
         result = 0.0
         for r in range(0, inputs.num_rows()):
             x_k = inputs.row(r)
@@ -97,7 +98,7 @@ class Weights:
             result += self.loglike_derivative_from_row(x_k, y_k, lt, col)
         return result - self.penalty_derivative(col)
 
-    def loglike_second_derivative(self, inputs: arr.Fmat, output: dat.Column, lt: Learntype, col: int) -> float:
+    def loglike_second_derivative(self, inputs: arr.Fmat, output: dat.Kolumn, lt: Learntype, col: int) -> float:
         result = 0.0
         for r in range(0, inputs.num_rows()):
             x_k = inputs.row(r)
@@ -651,7 +652,7 @@ def weights_zero(n_weights: int) -> Weights:
     return weights_create(arr.floats_all_zero(n_weights))
 
 
-def train_glm(inputs: arr.Fmat, output: dat.Column, lt: Learntype) -> Weights:
+def train_glm(inputs: arr.Fmat, output: dat.Kolumn, lt: Learntype) -> Weights:
     ws = weights_zero(inputs.num_cols())
     start_ll = ws.loglike(inputs, output, lt)
     ll = start_ll
