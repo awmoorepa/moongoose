@@ -148,9 +148,12 @@ def string_is_bool(s: str) -> bool:
 
 
 def n_spaces(n: int) -> str:
-    result = ""
-    for i in range(0, n):
-        result = result + " "
+    result = ''
+    for i in range(n):
+        result += ' '
+
+    assert len(result) == n
+
     return result
 
 
@@ -244,10 +247,11 @@ def maybeint_undefined() -> Maybeint:
     return Maybeint(False, -7777)
 
 
-def string_index_of_character(s: str, c: Character) -> tuple[int, bool]:
-    assert isinstance(c, Character)
-    for i in range(0, len(s)):
-        if character_from_string(s, i).equals(c):
+def string_index_of_character(s: str, target: Character) -> tuple[int, bool]:
+    assert isinstance(target, Character)
+    target_as_string = target.string()
+    for i, ci_as_string in enumerate(s):
+        if ci_as_string == target_as_string:
             return i, True
     return -77, False
 
@@ -259,12 +263,14 @@ def string_contains(s: str, c: Character) -> bool:
 
 def string_replace(s: str, old: Character, nu: Character) -> str:
     result = ""
-    for i in range(0, len(s)):
-        c = character_from_string(s, i)
-        if c.equals(old):
-            result = result + nu.string()
+    old_as_string = old.string()
+    nu_as_string = nu.string()
+
+    for ci_as_string in s:
+        if ci_as_string == old_as_string:
+            result = result + nu_as_string
         else:
-            result = result + c.string()
+            result = result + ci_as_string
     return result
 
 

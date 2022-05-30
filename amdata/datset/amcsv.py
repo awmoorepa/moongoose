@@ -326,7 +326,7 @@ def smat_from_strings(ss: arr.Strings) -> tuple[arr.Smat, bas.Errmess]:
     if em.is_error():
         return arr.smat_default(), em
 
-    return arr.smat_from_row_indexed_smat(ris), bas.errmess_ok()
+    return arr.smat_create(ris), bas.errmess_ok()
 
 
 def csv_test_ok(s: str, r: int, c: int, check: str):

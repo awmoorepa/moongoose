@@ -1,6 +1,8 @@
 import enum
 import math
 
+from collections.abc import Iterator
+
 import datset.ambasic as bas
 import datset.amarrays as arr
 import datset.dset as dat
@@ -13,10 +15,10 @@ class Learntype(enum.Enum):
     linear = 1
     multinomial = 2
 
-    def loglike(self, beta_xs: arr.Floats, output: dat.Kolumn) -> float:
+    def loglike(self, beta_xs: arr.Floats, output: dat.Column) -> float:
         result = 0.0
-        for r in range(0, beta_xs.len()):
-            result += self.loglike_of_element(beta_xs.float(r), output.atom(r))
+        for (bx, a) in zip(beta_xs.range(), output.range()):
+            result += self.loglike_of_element(bx, a)
 
         return result
 
@@ -86,23 +88,19 @@ class Weights:
         assert isinstance(self.m_weights, arr.Floats)
         self.m_weights.assert_ok()
 
-    def loglike(self, inputs: arr.Fmat, output: dat.Kolumn, lt: Learntype) -> float:
+    def loglike(self, inputs: arr.Fmat, output: dat.Column, lt: Learntype) -> float:
         beta_xs = self.premultiplied_by(inputs)
         return lt.loglike(beta_xs, output) - self.penalty()
 
-    def loglike_derivative(self, inputs: arr.Fmat, output: dat.Kolumn, lt: Learntype, col: int) -> float:
+    def loglike_derivative(self, inputs: arr.Fmat, output: dat.Column, lt: Learntype, col: int) -> float:
         result = 0.0
-        for r in range(0, inputs.num_rows()):
-            x_k = inputs.row(r)
-            y_k = output.atom(r)
+        for x_k, y_k in zip(inputs.range_rows(), output.range()):
             result += self.loglike_derivative_from_row(x_k, y_k, lt, col)
         return result - self.penalty_derivative(col)
 
-    def loglike_second_derivative(self, inputs: arr.Fmat, output: dat.Kolumn, lt: Learntype, col: int) -> float:
+    def loglike_second_derivative(self, inputs: arr.Fmat, output: dat.Column, lt: Learntype, col: int) -> float:
         result = 0.0
-        for r in range(0, inputs.num_rows()):
-            x_k = inputs.row(r)
-            y_k = output.atom(r)
+        for x_k, y_k in zip(inputs.range_rows(), output.range()):
             result += self.loglike_second_derivative_from_row(x_k, y_k, lt, col)
         return result - ws_penalty_second_derivative()
 
@@ -146,7 +144,7 @@ class Weights:
         return self.floats().dot_product(x_k)
 
     def pretty_strings_with_introduction(self, nns: noo.Noomnames, intro: str) -> arr.Strings:
-        assert self.len() == nns.len()
+        assert self.num_cols_in_x_matrix() == nns.len()+1
         result = arr.strings_singleton(intro)
         result.add('')
         result.add('where...')
@@ -157,20 +155,21 @@ class Weights:
     def pretty_string_with_introduction(self, nns: noo.Noomnames, intro: str) -> str:
         return self.pretty_strings_with_introduction(nns, intro).concatenate_fancy('', '\n', '')
 
-    def len(self) -> int:
+    def num_cols_in_x_matrix(self) -> int:
         return self.floats().len()
 
     def pretty_strings(self, nns: noo.Noomnames) -> arr.Strings:
         return self.strings_array(nns).pretty_strings()
 
     def strings_array(self, nns: noo.Noomnames) -> arr.StringsArray:
-        assert self.len() == nns.len()
+        assert self.num_cols_in_x_matrix() == nns.len()+1
         result = arr.strings_array_empty()
-        for i in range(0, self.len()):
+        nns_as_strings = arr.strings_singleton('constant').with_many(nns.strings())
+        for nn_as_string, w in zip(nns_as_strings.range(), self.range()):
             ss = arr.strings_empty()
-            ss.add(f'w[{nns.noomname(i).string()}]')
+            ss.add(f'w[{nn_as_string}]')
             ss.add('=')
-            ss.add(f'{self.weight(i)}')
+            ss.add(f'{w}')
             result.add(ss)
         return result
 
@@ -193,6 +192,9 @@ class Weights:
 
     def sum_squares(self) -> float:
         return self.times(self.floats())
+
+    def range(self) -> Iterator[float]:
+        return self.m_weights.range()
 
 
 class Modnames:
@@ -312,7 +314,7 @@ class WeightsArray:
         assert isinstance(self.m_value_to_weights, list)
         for ws in self.m_value_to_weights:
             assert isinstance(ws, Weights)
-            assert self.m_num_cols == ws.len()
+            assert self.m_num_cols == ws.num_cols_in_x_matrix()
 
         if len(self.m_value_to_weights) > 0:
             self.m_value_to_weights[0].loosely_equals(weights_zero(self.m_num_cols))
@@ -330,7 +332,7 @@ class WeightsArray:
 
     def loglike(self, x: arr.Fmat, y: arr.Ints) -> float:
         result = 0.0
-        for k in range(0, x.num_rows()):
+        for k in range(x.num_rows()):
             result += self.loglike_k(x, y, k)
         return result - self.penalty()
 
@@ -340,11 +342,14 @@ class WeightsArray:
     def pretty_strings(self, ms: Modnames, vns: dat.Valnames) -> arr.Strings:
         return self.fmat().pretty_strings_with_headings("", vns.strings(), ms.noomnames().strings())
 
-    def fmat(self) -> arr.Fmat:
-        result = arr.fmat_empty()
-        for i in range(0, self.num_values()):
-            result.add_row(self.weights(i).floats())
+    def row_indexed_fmat(self) -> arr.RowIndexedFmat:
+        result = arr.row_indexed_fmat_with_no_rows(self.num_elements_in_each_weights_vector())
+        for ws in self.range():
+            result.add_row(ws.floats())
         return result
+
+    def fmat(self) -> arr.Fmat:
+        return arr.fmat_create(self.row_indexed_fmat())
 
     def num_values(self) -> int:
         return len(self.m_value_to_weights)
@@ -352,7 +357,7 @@ class WeightsArray:
     def predict(self, z: arr.Floats) -> dis.Multinomial:
         sk = self.sk(z)
         probs = arr.floats_empty()
-        for i in range(0, self.num_values()):
+        for i in range(self.num_values()):
             eki = self.eki(z, i)
             probs.add(eki / sk)
         return dis.multinomial_create(probs)
@@ -369,18 +374,18 @@ class WeightsArray:
 
     def sk(self, z: arr.Floats) -> float:
         result = 0
-        for i in range(0, self.num_values()):
+        for i in range(self.num_values()):
             result += self.eki(z, i)
         return result
 
     def deep_copy(self):  # returns WeightsArray
         result = weights_array_empty(self.num_elements_in_each_weights_vector())
-        for v in range(0, self.num_values()):
-            result.add_weights(self.weights(v).deep_copy())
+        for ws in self.range():
+            result.add_weights(ws.deep_copy())
         return result
 
     def add_weights(self, ws: Weights):
-        assert ws.len() == self.num_elements_in_each_weights_vector()
+        assert ws.num_cols_in_x_matrix() == self.num_elements_in_each_weights_vector()
         self.m_value_to_weights.append(ws)
 
     def num_elements_in_each_weights_vector(self) -> int:
@@ -394,9 +399,12 @@ class WeightsArray:
 
     def sum_squares(self) -> float:
         result = 0.0
-        for i in range(0, self.num_values()):
-            result += self.weights(i).sum_squares()
+        for ws in self.range():
+            result += ws.sum_squares()
         return result
+
+    def range(self) -> Iterator[Weights]:
+        pass
 
 
 def weights_array_empty(n_cols: int) -> WeightsArray:
@@ -407,7 +415,7 @@ def weights_array_zero(n_values: int, n_cols: int) -> WeightsArray:
     assert n_values > 1
     assert n_cols >= 1
     result = weights_array_empty(n_cols)
-    for i in range(0, n_values):
+    for i in range(n_values):
         result.add_row_of_zero_weights()
     return result
 
@@ -424,18 +432,18 @@ def multinomial_train_weights(x: arr.Fmat, y: arr.Ints, ms: Modnames, vns: dat.V
     iteration = 0
     while True:
         ll_old = ll
-        for j in range(0, x.num_cols()):
+        for j in range(x.num_cols()):
             for i in range(1, n_values):  # math would've redundancy which is solved by zeroing first row of weights
                 print(f'iteration {iteration}, j = {j}, i = {i}, wsa =\n{wsa.pretty_string(ms, vns)}')
                 aaa = 0.0
                 bbb = 0.0
                 ccc = 0.0
-                for k in range(0, x.num_rows()):
+                for k in range(x.num_rows()):
                     # pik denotes P(class = i | x_k, Weights)
                     # eik = exp(Weights[i] . x_k)
                     u_to_euk = arr.floats_empty()
-                    for u in range(0, n_values):
-                        quk = wsa.weights(u).times(x.row(k))
+                    for ws in wsa.range():
+                        quk = ws.times(x.row(k))
                         euk = math.exp(quk)
                         u_to_euk.add(euk)
 
@@ -652,7 +660,7 @@ def weights_zero(n_weights: int) -> Weights:
     return weights_create(arr.floats_all_zero(n_weights))
 
 
-def train_glm(inputs: arr.Fmat, output: dat.Kolumn, lt: Learntype) -> Weights:
+def train_glm(inputs: arr.Fmat, output: dat.Column, lt: Learntype) -> Weights:
     ws = weights_zero(inputs.num_cols())
     start_ll = ws.loglike(inputs, output, lt)
     ll = start_ll
@@ -660,7 +668,7 @@ def train_glm(inputs: arr.Fmat, output: dat.Kolumn, lt: Learntype) -> Weights:
     iteration = 0
     while True:
         ll_old = ll
-        for col in range(0, inputs.num_cols()):
+        for col in range(inputs.num_cols()):
             print(f'iter {iteration}, col {col}: ll = {ll}, ws = {ws.floats().pretty_string()}')
             aaa = ws.loglike(inputs, output, lt)
             assert bas.loosely_equals(aaa, ll)
@@ -696,7 +704,6 @@ def modnames_create(tfs: noo.Transformers, output: dat.Colname) -> Modnames:
 
 
 def train_linear_model(inputs: dat.Datset, output: dat.NamedColumn) -> ModelLinear:
-    assert output.coltype() == dat.Coltype.float
     tfs = noo.transformers_from_datset(inputs)
     ns = tfs.transform_datset(inputs)
     mns = modnames_create(tfs, output.colname())
@@ -722,7 +729,7 @@ def logistic_model_create(mns: Modnames, ws: Weights) -> ModelLogistic:
 
 
 def train_logistic_model(inputs: dat.Datset, output: dat.NamedColumn) -> ModelLogistic:
-    assert output.coltype() == dat.Coltype.bool
+    assert isinstance(output.column(), dat.ColumnBool)
     tfs = noo.transformers_from_datset(inputs)
     ns = tfs.transform_datset(inputs)
     mns = modnames_create(tfs, output.colname())

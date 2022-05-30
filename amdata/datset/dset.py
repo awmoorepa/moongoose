@@ -1,19 +1,18 @@
-import enum
 import sys
 from typing import TextIO
+from collections.abc import Iterator
+
+import requests
 
 import datset.amarrays as arr
 import datset.ambasic as bas
 import datset.amcsv as csv
-import requests
-
-from datset.amarrays import Smat
 
 
-class Coltype(enum.Enum):
-    bool = 0
-    float = 1
-    categorical = 2
+# class Coltype(enum.Enum):
+#     bool = 0
+#     float = 1
+#     categorical = 2
 
 
 class Colname:
@@ -203,18 +202,22 @@ class Valnames:
 
     def strings(self) -> arr.Strings:
         result = arr.strings_empty()
-        for i in range(0, self.len()):
-            result.add(self.valname(i).string())
+        for v in self.range():
+            result.add(v.string())
         return result
 
     def subset(self, indexes: arr.Ints):  # returns Valnames
         result = valnames_empty()
-        for i in range(0, indexes.len()):
-            result.add(self.valname(indexes.int(i)))
+        for index in indexes.range():
+            result.add(self.valname(index))
         return result
 
     def contains_duplicates(self) -> bool:
         return self.strings().contains_duplicates()
+
+    def range(self) -> Iterator[Valname]:
+        for vn in self.m_valnames:
+            yield vn
 
 
 class Cats:
@@ -263,6 +266,16 @@ class Cats:
     def histogram(self) -> arr.Ints:
         return self.m_row_to_value.histogram()
 
+    def range_valnames_by_row(self) -> Iterator[Valname]:
+        for val in self.range_values_by_row():
+            yield self.valname_from_value(val)
+
+    def range_values_by_row(self) -> Iterator[int]:
+        return self.m_row_to_value.range()
+
+    def range_valnames_by_value(self) -> Iterator[Valname]:
+        return self.m_value_to_valname.range()
+
 
 def cats_create(row_to_value: arr.Ints, vns: Valnames) -> Cats:
     return Cats(row_to_value, vns)
@@ -278,25 +291,23 @@ def valname_from_string(s: str) -> Valname:
 
 def valnames_from_strings(ss: arr.Strings) -> Valnames:
     result = valnames_empty()
-    for i in range(0, ss.len()):
-        result.add(valname_from_string(ss.string(i)))
+    for s in ss.range():
+        result.add(valname_from_string(s))
     return result
 
 
 def cats_from_strings(row_to_string: arr.Strings) -> Cats:
     nm = arr.namer_empty()
     row_to_unsorted_value = arr.ints_empty()
-    for r in range(0, row_to_string.len()):
-        vn = row_to_string.string(r)
+    for vn in row_to_string.range():
         unsorted_val, ok = nm.key_from_name(vn)
         if not ok:
             unsorted_val = nm.len()
             nm.add(vn)
         row_to_unsorted_value.add(unsorted_val)
 
-    unsorted_value_to_name = valnames_empty()
-    for unsorted_value in range(0, nm.len()):
-        unsorted_value_to_name.add(valname_from_string(nm.name_from_key(unsorted_value)))
+    unsorted_names_as_strings = nm.names()
+    unsorted_value_to_name = valnames_from_strings(unsorted_names_as_strings)
 
     sorted_value_to_unsorted_value = unsorted_value_to_name.indexes_of_sorted()
     unsorted_value_to_sorted_value = sorted_value_to_unsorted_value.invert_index()
@@ -304,96 +315,98 @@ def cats_from_strings(row_to_string: arr.Strings) -> Cats:
     assert sorted_value_to_name.is_sorted()
 
     row_to_sorted_value = arr.ints_empty()
-    for r in range(0, row_to_string.len()):
-        unsorted_value = row_to_unsorted_value.int(r)
+    for unsorted_value in row_to_unsorted_value.range():
         sorted_value = unsorted_value_to_sorted_value.int(unsorted_value)
         row_to_sorted_value.add(sorted_value)
-        original_rth_valname = valname_from_string(row_to_string.string(r))
-        result_rth_valname = sorted_value_to_name.valname(sorted_value)
-        assert original_rth_valname.equals(result_rth_valname)
 
-    return cats_create(row_to_sorted_value, sorted_value_to_name)
+    result = cats_create(row_to_sorted_value, sorted_value_to_name)
+
+    if bas.expensive_assertions:
+        for original_string, final_valname in zip(row_to_string.range(), result.range_valnames_by_row()):
+            assert original_string == final_valname.string()
+
+    return result
 
 
-class Column:
-    def __init__(self, ct: Coltype, items: any):
-        self.m_coltype = ct
-        self.m_list = items
-        self.assert_ok()
-
-    def assert_ok(self):
-        assert isinstance(self.m_coltype, Coltype)
-        if self.m_coltype == Coltype.bool:
-            assert isinstance(self.m_list, arr.Bools)
-            self.m_list.assert_ok()
-        elif self.m_coltype == Coltype.float:
-            assert isinstance(self.m_list, arr.Floats)
-            self.m_list.assert_ok()
-        elif self.m_coltype == Coltype.categorical:
-            assert isinstance(self.m_list, Cats)
-            self.m_list.assert_ok()
-        else:
-            bas.my_error("bad column type")
-
-    def num_rows(self) -> int:
-        assert isinstance(self.m_coltype, Coltype)
-        if self.m_coltype == Coltype.bool:
-            assert isinstance(self.m_list, arr.Bools)
-            return self.m_list.len()
-        elif self.m_coltype == Coltype.float:
-            assert isinstance(self.m_list, arr.Floats)
-            return self.m_list.len()
-        elif self.m_coltype == Coltype.categorical:
-            assert isinstance(self.m_list, Cats)
-            self.m_list.assert_ok()
-            return self.m_list.num_rows()
-        else:
-            bas.my_error("bad column type")
-
-    def coltype(self) -> Coltype:
-        return self.m_coltype
-
-    def cats(self) -> Cats:
-        assert self.coltype() == Coltype.categorical
-        return self.m_list
-
-    def floats(self) -> arr.Floats:
-        assert self.coltype() == Coltype.float
-        return self.m_list
-
-    def bools(self) -> arr.Bools:
-        assert self.coltype() == Coltype.bool
-        return self.m_list
-
-    def valname_from_row(self, r: int) -> Valname:
-        return self.cats().valname_from_row(r)
-
-    def float(self, r: int) -> float:
-        return self.floats().float(r)
-
-    def bool(self, r: int) -> bool:
-        return self.bools().bool(r)
-
-    def atom(self, r: int) -> Atom:
-        ct = self.coltype()
-        if ct == Coltype.categorical:
-            return atom_from_valname(self.valname_from_row(r))
-        elif ct == Coltype.float:
-            return atom_from_float(self.float(r))
-        elif ct == Coltype.bool:
-            return atom_from_bool(self.bool(r))
-        else:
-            bas.my_error("bad coltype")
-
-    def valnames(self) -> Valnames:
-        return self.cats().valnames()
+# class Column:
+#     def __init__(self, ct: Coltype, items: any):
+#         self.m_coltype = ct
+#         self.m_list = items
+#         self.assert_ok()
+#
+#     def assert_ok(self):
+#         assert isinstance(self.m_coltype, Coltype)
+#         if self.m_coltype == Coltype.bool:
+#             assert isinstance(self.m_list, arr.Bools)
+#             self.m_list.assert_ok()
+#         elif self.m_coltype == Coltype.float:
+#             assert isinstance(self.m_list, arr.Floats)
+#             self.m_list.assert_ok()
+#         elif self.m_coltype == Coltype.categorical:
+#             assert isinstance(self.m_list, Cats)
+#             self.m_list.assert_ok()
+#         else:
+#             bas.my_error("bad column type")
+#
+#     def num_rows(self) -> int:
+#         assert isinstance(self.m_coltype, Coltype)
+#         if self.m_coltype == Coltype.bool:
+#             assert isinstance(self.m_list, arr.Bools)
+#             return self.m_list.len()
+#         elif self.m_coltype == Coltype.float:
+#             assert isinstance(self.m_list, arr.Floats)
+#             return self.m_list.len()
+#         elif self.m_coltype == Coltype.categorical:
+#             assert isinstance(self.m_list, Cats)
+#             self.m_list.assert_ok()
+#             return self.m_list.num_rows()
+#         else:
+#             bas.my_error("bad column type")
+#
+#     def coltype(self) -> Coltype:
+#         return self.m_coltype
+#
+#     def cats(self) -> Cats:
+#         assert self.coltype() == Coltype.categorical
+#         return self.m_list
+#
+#     def floats(self) -> arr.Floats:
+#         assert self.coltype() == Coltype.float
+#         return self.m_list
+#
+#     def bools(self) -> arr.Bools:
+#         assert self.coltype() == Coltype.bool
+#         return self.m_list
+#
+#     def valname_from_row(self, r: int) -> Valname:
+#         return self.cats().valname_from_row(r)
+#
+#     def float(self, r: int) -> float:
+#         return self.floats().float(r)
+#
+#     def bool(self, r: int) -> bool:
+#         return self.bools().bool(r)
+#
+#     def atom(self, r: int) -> Atom:
+#         ct = self.coltype()
+#         if ct == Coltype.categorical:
+#             return atom_from_valname(self.valname_from_row(r))
+#         elif ct == Coltype.float:
+#             return atom_from_float(self.float(r))
+#         elif ct == Coltype.bool:
+#             return atom_from_bool(self.bool(r))
+#         else:
+#             bas.my_error("bad coltype")
+#
+#     def valnames(self) -> Valnames:
+#         return self.cats().valnames()
 
 
 def cats_default() -> Cats:
     return cats_create(arr.ints_empty(), valnames_empty())
 
 
-class Kolumn:
+class Column:
     def assert_ok(self):
         bas.my_error(f'{self} base class')
 
@@ -401,9 +414,9 @@ class Kolumn:
         bas.my_error(f'{self} base class')
         return -77
 
-    def coltype(self) -> Coltype:
-        bas.my_error(f'{self} base class')
-        return Coltype.bool
+    # def coltype(self) -> Coltype:
+    #     bas.my_error(f'{self} base class')
+    #     return Coltype.bool
 
     def atom(self, r: int) -> Atom:
         bas.my_error(f'{self} {r} base')
@@ -421,7 +434,7 @@ class Kolumn:
         bas.my_error(f'{self} base')
         return valnames_empty()
 
-    def valname_from_row(self, r: int) -> Valname:
+    def valname(self, r: int) -> Valname:
         bas.my_error(f'{self} {r} base')
         return valname_default()
 
@@ -433,9 +446,12 @@ class Kolumn:
         bas.my_error(f'{self} {r} base')
         return False
 
+    def range(self):
+        bas.my_error(f'{self} base')
+
 
 class NamedColumn:
-    def __init__(self, cn: Colname, col: Kolumn):
+    def __init__(self, cn: Colname, col: Column):
         self.m_colname = cn
         self.m_column = col
         self.assert_ok()
@@ -443,20 +459,20 @@ class NamedColumn:
     def assert_ok(self):
         assert isinstance(self.m_colname, Colname)
         self.m_colname.assert_ok()
-        assert isinstance(self.m_column, Kolumn)
+        assert isinstance(self.m_column, Column)
         self.m_column.assert_ok()
 
     def colname(self) -> Colname:
         return self.m_colname
 
-    def column(self) -> Kolumn:
+    def column(self) -> Column:
         return self.m_column
 
     def num_rows(self) -> int:
         return self.column().num_rows()
 
-    def coltype(self) -> Coltype:
-        return self.column().coltype()
+    # def coltype(self) -> Coltype:
+    #     return self.column().coltype()
 
     def atom(self, r: int) -> Atom:
         return self.column().atom(r)
@@ -481,8 +497,8 @@ class Colnames:
 
     def strings(self) -> arr.Strings:
         result = arr.strings_empty()
-        for i in range(0, self.len()):
-            result.add(self.string(i))
+        for cn in self.range():
+            result.add(cn.string())
         return result
 
     def assert_ok(self):
@@ -509,11 +525,20 @@ class Colnames:
 
     def minus(self, cn: Colname):  # returns Colnames
         result = colnames_empty()
-        for i in range(0, self.len()):
-            cn_i = self.colname(i)
+        for cn_i in self.range():
             if not cn.equals(cn_i):
                 result.add(cn_i)
         return result
+
+    def range(self) -> Iterator[Colname]:
+        for cn in self.m_colnames:
+            yield cn
+
+    def colid_from_colname(self, target: Colname) -> tuple[int, bool]:
+        for c, cln in enumerate(self.range()):
+            if cln.equals(target):
+                return c, True
+        return -77, False
 
 
 def colnames_empty() -> Colnames:
@@ -560,9 +585,13 @@ class Row:
 
     def strings(self) -> arr.Strings:
         result = arr.strings_empty()
-        for i in range(0, self.len()):
-            result.add(self.atom(i).pretty_string())
+        for a in self.range():
+            result.add(a.pretty_string())
         return result
+
+    def range(self) -> Iterator[Atom]:
+        for a in self.m_atoms:
+            yield a
 
 
 def row_empty() -> Row:
@@ -576,7 +605,7 @@ class Datset:
         self.assert_ok()
 
     def valname(self, r: int, c: int) -> Valname:
-        return self.column(c).valname_from_row(r)
+        return self.column(c).valname(r)
 
     def float(self, r: int, c: int) -> float:
         return self.column(c).float(r)
@@ -609,8 +638,8 @@ class Datset:
     def strings_array(self) -> arr.StringsArray:
         result = arr.strings_array_empty()
         result.add(self.colnames().strings())
-        for r in range(0, self.num_rows()):
-            result.add(self.row(r).strings())
+        for ss in self.range_rows():
+            result.add(ss.strings())
 
         return result
 
@@ -620,7 +649,7 @@ class Datset:
     def num_cols(self) -> int:
         return self.colnames().len()
 
-    def column(self, c: int) -> Kolumn:
+    def column(self, c: int) -> Column:
         return self.named_column(c).column()
 
     def named_column(self, c: int) -> NamedColumn:
@@ -631,18 +660,15 @@ class Datset:
         print(self.pretty_string())
 
     def colid_from_colname(self, cn: Colname) -> tuple[int, bool]:
-        for c in range(0, self.num_cols()):
-            if self.colname(c).equals(cn):
-                return c, True
-        return 0, False
+        return self.colnames().colid_from_colname(cn)
 
     def colname(self, c: int) -> Colname:
         return self.named_column(c).colname()
 
     def subcols_from_ints(self, cs: arr.Ints):  # returns Datset
         ds = datset_empty(self.num_rows())
-        for i in range(0, cs.len()):
-            ds.add(self.named_column(cs.int(i)))
+        for c in cs.range():
+            ds.add(self.named_column(c))
         return ds
 
     def subcols(self, *strs: str):  # returns Datset
@@ -654,7 +680,7 @@ class Datset:
 
     def colids_from_colnames(self, cns: Colnames) -> tuple[arr.Ints, bool]:
         result = arr.ints_empty()
-        for i in range(0, cns.len()):
+        for i in range(cns.len()):
             i, ok = self.colid_from_colname(cns.colname(i))
             if not ok:
                 return arr.ints_empty(), False
@@ -675,9 +701,8 @@ class Datset:
 
     def row(self, r: int) -> Row:
         result = row_empty()
-        for c in range(0, self.num_cols()):
-            a = self.atom(r, c)
-            result.add(a)
+        for c in self.range_columns():
+            result.add(c.atom(r))
         return result
 
     def atom(self, r: int, c: int) -> Atom:
@@ -702,10 +727,22 @@ class Datset:
 
     def without_colid(self, col: int):  # returns datset
         result = datset_empty(self.num_rows())
-        for c in range(0, self.num_cols()):
+        for c in range(self.num_cols()):
             if not c == col:
                 result.add(self.named_column(c))
         return result
+
+    def range_rows(self) -> Iterator[Row]:
+        for r in range(self.num_rows()):
+            yield self.row(r)
+
+    def range_named_columns(self) -> Iterator[NamedColumn]:
+        for nc in self.m_named_columns:
+            yield nc
+
+    def range_columns(self) -> Iterator[Column]:
+        for nc in self.range_named_columns():
+            yield nc.column()
 
 
 def datset_empty(n_rows: int) -> Datset:
@@ -829,7 +866,7 @@ class Datid:
     def string(self) -> str:
         return self.m_string
 
-    def smat_load(self) -> tuple[Smat, bas.Errmess]:
+    def smat_load(self) -> tuple[arr.Smat, bas.Errmess]:
         ss, em = self.strings_load()
         if em.is_error():
             return arr.smat_default(), em
@@ -929,7 +966,7 @@ def datid_from_string(datid_as_string: str) -> tuple[Datid, bas.Errmess]:
         return datid_default(), bas.errmess_error(f"{datid_as_string} is not a legal filename")
 
 
-def named_column_create(cn: Colname, c: Kolumn) -> NamedColumn:
+def named_column_create(cn: Colname, c: Column) -> NamedColumn:
     return NamedColumn(cn, c)
 
 
@@ -937,7 +974,7 @@ def colname_create(s: str) -> Colname:
     return Colname(s)
 
 
-class ColumnBool(Kolumn):
+class ColumnBool(Column):
     def __init__(self, bs: arr.Bools):
         self.m_bools = bs
         self.assert_ok()
@@ -949,12 +986,22 @@ class ColumnBool(Kolumn):
     def num_rows(self) -> int:
         return self.m_bools.len()
 
+    def atom(self, r: int) -> Atom:
+        return atom_from_bool(self.bool(r))
 
-def column_from_bools(bs: arr.Bools) -> Kolumn:
+    def bool(self, r: int) -> bool:
+        return self.m_bools.bool(r)
+
+    def range(self):
+        for b in self.m_bools.range():
+            yield atom_from_bool(b)
+
+
+def column_from_bools(bs: arr.Bools) -> Column:
     return ColumnBool(bs)
 
 
-def column_default() -> Kolumn:
+def column_default() -> Column:
     return column_from_bools(arr.bools_singleton(False))
 
 
@@ -962,29 +1009,19 @@ def named_column_default() -> NamedColumn:
     return named_column_create(colname_create("default"), column_default())
 
 
-def coltype_from_strings(ss: arr.Strings) -> Coltype:
-    assert ss.len() > 0
-    could_be_floats = True
-    could_be_bools = True
+def column_from_strings(ss: arr.Strings) -> Column:
+    bs, ok = arr.bools_from_strings(ss)
+    if ok:
+        return column_from_bools(bs)
 
-    for i in range(0, ss.len()):
-        s = ss.string(i)
-        if could_be_floats and not bas.string_is_float(s):
-            could_be_floats = False
-        if could_be_bools and not bas.string_is_bool(s):
-            could_be_bools = False
-        if not (could_be_bools or could_be_floats):
-            return Coltype.categorical
+    fs, ok = arr.floats_from_strings(ss)
+    if ok:
+        return column_from_floats(fs)
 
-    assert could_be_bools != could_be_floats
-
-    if could_be_bools:
-        return Coltype.bool
-    else:
-        return Coltype.float
+    return column_from_cats(cats_from_strings(ss))
 
 
-class ColumnFloats(Kolumn):
+class ColumnFloats(Column):
     def __init__(self, fs: arr.Floats):
         self.m_floats = fs
 
@@ -994,12 +1031,25 @@ class ColumnFloats(Kolumn):
     def assert_ok(self):
         assert isinstance(self.m_floats, arr.Floats)
 
+    def atom(self, r: int) -> Atom:
+        return atom_from_float(self.float(r))
 
-def column_from_floats(fs: arr.Floats) -> Kolumn:
+    def float(self, r: int) -> float:
+        return self.m_floats.float(r)
+
+    def floats(self) -> arr.Floats:
+        return self.m_floats
+
+    def range(self):  # elements of the range are atoms
+        for f in self.m_floats.range():
+            yield atom_from_float(f)
+
+
+def column_from_floats(fs: arr.Floats) -> Column:
     return ColumnFloats(fs)
 
 
-class ColumnCats(Kolumn):
+class ColumnCats(Column):
     def __init__(self, cs: Cats):
         self.m_cats = cs
 
@@ -1010,24 +1060,22 @@ class ColumnCats(Kolumn):
     def num_rows(self) -> int:
         return self.m_cats.num_rows()
 
+    def atom(self, r: int) -> Atom:
+        return atom_from_valname(self.valname(r))
 
-def column_of_type_cats(cs: Cats) -> Kolumn:
+    def valname(self, r: int) -> Valname:
+        return self.m_cats.valname_from_row(r)
+
+    def cats(self) -> Cats:
+        return self.m_cats
+
+    def range(self) -> Iterator[Atom]:
+        for v in self.m_cats.range_valnames_by_row():
+            yield atom_from_valname(v)
+
+
+def column_from_cats(cs: Cats) -> Column:
     return ColumnCats(cs)
-
-
-def column_from_strings_choosing_coltype(ss: arr.Strings) -> Kolumn:
-    ct = coltype_from_strings(ss)
-    if ct == Coltype.bool:
-        bs, ok = arr.bools_from_strings(ss)
-        assert ok
-        return column_from_bools(bs)
-    elif ct == Coltype.float:
-        fs, ok = arr.floats_from_strings(ss)
-        assert ok
-        return column_from_floats(fs)
-    else:
-        assert ct == Coltype.categorical
-        return column_of_type_cats(cats_from_strings(ss))
 
 
 def named_column_from_strings(ss: arr.Strings) -> tuple[NamedColumn, bas.Errmess]:
@@ -1035,19 +1083,19 @@ def named_column_from_strings(ss: arr.Strings) -> tuple[NamedColumn, bas.Errmess
         return named_column_default(), bas.errmess_error("A file with named columns needs at least two rows")
 
     rest = arr.strings_without_first_n_elements(ss, 1)
-    c = column_from_strings_choosing_coltype(rest)
+    c = column_from_strings(rest)
 
     return named_column_create(colname_create(ss.string(0)), c), bas.errmess_ok()
 
 
-def named_column_from_smat_column(sm: Smat, c: int) -> tuple[NamedColumn, bas.Errmess]:
+def named_column_from_smat_column(sm: arr.Smat, c: int) -> tuple[NamedColumn, bas.Errmess]:
     return named_column_from_strings(sm.column(c))
 
 
-def named_columns_from_smat(sm: Smat) -> tuple[list[NamedColumn], bas.Errmess]:
+def named_columns_from_smat(sm: arr.Smat) -> tuple[list[NamedColumn], bas.Errmess]:
     result = []
-    for c in range(0, sm.num_cols()):
-        nc, em = named_column_from_smat_column(sm, c)
+    for ss in sm.range_columns():
+        nc, em = named_column_from_strings(ss)
         if em.is_error():
             return [], em
         result.append(nc)
@@ -1076,7 +1124,7 @@ def load(datid_as_string: str) -> Datset:
     return ds
 
 
-def datset_from_smat(sm: Smat) -> tuple[Datset, bas.Errmess]:
+def datset_from_smat(sm: arr.Smat) -> tuple[Datset, bas.Errmess]:
     ncs, em = named_columns_from_smat(sm)
     if em.is_error():
         return datset_default(), em
@@ -1123,6 +1171,6 @@ def unit_test():
     assert ds.num_cols() == 4
 
 
-def smat_from_multiline_string(s: str) -> tuple[Smat, bas.Errmess]:
+def smat_from_multiline_string(s: str) -> tuple[arr.Smat, bas.Errmess]:
     ss = arr.strings_from_lines_in_string(s)
     return csv.smat_from_strings(ss)
