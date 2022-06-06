@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from typing import List, Tuple, Iterator
 
 import datset.amarrays as arr
 import datset.ambasic as bas
@@ -27,7 +27,7 @@ class Noomname:
 
 
 class Noomnames:
-    def __init__(self, li: list[Noomname]):
+    def __init__(self, li: List[Noomname]):
         self.m_noomnames = li
         self.assert_ok()
 
@@ -200,7 +200,7 @@ class ValnameEncoder:
     def num_encodings(self) -> int:
         return self.m_namer.len()
 
-    def encoding(self, vn: dat.Valname) -> tuple[int, bool]:
+    def encoding(self, vn: dat.Valname) -> Tuple[int, bool]:
         return self.m_namer.key_from_name(vn.string())
 
 
@@ -218,7 +218,7 @@ def valname_encoder_create(encoding_to_valname: dat.Valnames) -> ValnameEncoder:
     return ValnameEncoder(nm)
 
 
-class Xformer:
+class Transformer:
     def assert_ok(self):
         bas.my_error(f'{self} base')
 
@@ -230,8 +230,15 @@ class Xformer:
         bas.my_error(f'{self} base')
         return arr.floats_empty()
 
+    def is_float(self) -> bool:
+        return False
 
-class CatTransformer(Xformer):
+    def transform_float(self, x) -> arr.Floats:
+        bas.my_error(f'{self} base')
+        return arr.floats_empty()
+
+
+class CatTransformer(Transformer):
     def __init__(self, cn: dat.Colname, encoding_to_valname: dat.Valnames):
         self.m_noomnames = categorical_noomnames(cn, encoding_to_valname)
         self.m_valname_encoder = valname_encoder_create(encoding_to_valname)
@@ -261,7 +268,7 @@ class CatTransformer(Xformer):
     def num_encodings(self) -> int:
         return self.m_valname_encoder.num_encodings()
 
-    def encoding_from_valname(self, vn: dat.Valname) -> tuple[int, bool]:
+    def encoding_from_valname(self, vn: dat.Valname) -> Tuple[int, bool]:
         return self.m_valname_encoder.encoding(vn)
 
 
@@ -297,7 +304,7 @@ def noomname_default() -> Noomname:
     return noomname_create('default')
 
 
-class FloatTransformer(Xformer):
+class FloatTransformer(Transformer):
     def __init__(self, nn: Noomname, fs: arr.Floats):
         self.m_noomname = nn
         self.m_interval = fs.extremes()
@@ -326,12 +333,15 @@ class FloatTransformer(Xformer):
         assert isinstance(a, dat.AtomFloat)
         return self.transform_float(a.float())
 
+    def is_float(self) -> bool:
+        return True
+
 
 def float_transformer_create(nn: Noomname, fs: arr.Floats) -> FloatTransformer:
     return FloatTransformer(nn, fs)
 
 
-class BoolTransformer(Xformer):
+class BoolTransformer(Transformer):
     def __init__(self, nn: Noomname):
         self.m_noomname = nn
         self.assert_ok()
@@ -441,7 +451,7 @@ def transformer_from_floats(cn: dat.Colname, fs: arr.Floats) -> FloatTransformer
     return float_transformer_create(noomname_from_colname(cn), fs)
 
 
-def transformer_from_column(cn: dat.Colname, c: dat.Column) -> Xformer:
+def transformer_from_column(cn: dat.Colname, c: dat.Column) -> Transformer:
     if isinstance(c, dat.ColumnCats):
         return transformer_from_cats(cn, c.cats())
     elif isinstance(c, dat.ColumnFloats):
@@ -452,7 +462,7 @@ def transformer_from_column(cn: dat.Colname, c: dat.Column) -> Xformer:
         bas.my_error("bad Transtype")
 
 
-def transformer_from_named_column(nc: dat.NamedColumn) -> Xformer:
+def transformer_from_named_column(nc: dat.NamedColumn) -> Transformer:
     return transformer_from_column(nc.colname(), nc.column())
 
 
@@ -466,17 +476,17 @@ def noomset_from_row_indexed_fmat(nns: Noomnames, rif: arr.RowIndexedFmat) -> No
 
 
 class Transformers:
-    def __init__(self, tfs: list[Xformer]):
+    def __init__(self, tfs: List[Transformer]):
         self.m_transformers = tfs
         self.assert_ok()
 
     def assert_ok(self):
         assert isinstance(self.m_transformers, list)
         for tf in self.m_transformers:
-            assert isinstance(tf, Xformer)
+            assert isinstance(tf, Transformer)
             tf.assert_ok()
 
-    def add(self, tf: Xformer):
+    def add(self, tf: Transformer):
         self.m_transformers.append(tf)
 
     def noomnames(self) -> Noomnames:
@@ -485,7 +495,7 @@ class Transformers:
             result.append(tf.noomnames())
         return result
 
-    def transformer(self, i) -> Xformer:
+    def transformer(self, i) -> Transformer:
         assert 0 <= i < self.len()
         return self.m_transformers[i]
 
@@ -509,7 +519,7 @@ class Transformers:
             rif.add_row(z)
         return noomset_from_row_indexed_fmat(nns, rif)
 
-    def range(self) -> Iterator[Xformer]:
+    def range(self) -> Iterator[Transformer]:
         for tf in self.m_transformers:
             yield tf
 
@@ -518,7 +528,7 @@ def transformers_empty():
     return Transformers([])
 
 
-def transformers_singleton(tf: Xformer) -> Transformers:
+def transformers_singleton(tf: Transformer) -> Transformers:
     result = transformers_empty()
     result.add(tf)
     return result
@@ -551,7 +561,7 @@ def noomnames_from_strings(ss: arr.Strings) -> Noomnames:
     return nns
 
 
-def noomset_from_smat(sm: arr.Smat) -> tuple[Noomset, bas.Errmess]:
+def noomset_from_smat(sm: arr.Smat) -> Tuple[Noomset, bas.Errmess]:
     if sm.num_rows() < 1:
         return noomset_default(), bas.errmess_error("Need at least 1 row")
 
@@ -565,7 +575,7 @@ def noomset_from_smat(sm: arr.Smat) -> tuple[Noomset, bas.Errmess]:
     return noomset_from_fmat(nns, fm), bas.errmess_ok()
 
 
-def noomset_from_multiline_string(s: str) -> tuple[Noomset, bas.Errmess]:
+def noomset_from_multiline_string(s: str) -> Tuple[Noomset, bas.Errmess]:
     sm, em = dat.smat_from_multiline_string(s)
 
     print(f'noomset_from first em = {em.string()}')

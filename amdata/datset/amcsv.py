@@ -1,5 +1,7 @@
 import enum
 
+from typing import Tuple
+
 import datset.amarrays as arr
 import datset.ambasic as bas
 
@@ -165,7 +167,7 @@ class StringStream:
             assert self.m_line_num < self.m_strings.len()
             assert 0 <= self.m_char_num <= len(self.m_strings.string(self.m_line_num))
 
-    def next_character(self) -> tuple[bas.Character, bool]:
+    def next_character(self) -> Tuple[bas.Character, bool]:
         if self.m_end_of_file:
             return bas.character_default(), False
         else:
@@ -196,7 +198,7 @@ class NextRowStatus(enum.Enum):
     error = 4
 
 
-def next_csv_row_output(ss: StringStream) -> tuple[arr.Strings, bas.Errmess, NextRowStatus]:
+def next_csv_row_output(ss: StringStream) -> Tuple[arr.Strings, bas.Errmess, NextRowStatus]:
     cs = csv_reader_start()
 
     while not cs.is_end_of_line():
@@ -283,7 +285,7 @@ def next_csv_row_output(ss: StringStream) -> tuple[arr.Strings, bas.Errmess, Nex
         return cs.row(), bas.errmess_ok(), NextRowStatus.maybe_more_lines_to_come
 
 
-def strings_array_from_string_stream_csv(sts: StringStream) -> tuple[arr.StringsArray, bas.Errmess]:
+def strings_array_from_string_stream_csv(sts: StringStream) -> Tuple[arr.StringsArray, bas.Errmess]:
     result = arr.strings_array_empty()
 
     while True:
@@ -305,12 +307,12 @@ def strings_array_from_string_stream_csv(sts: StringStream) -> tuple[arr.Strings
             return result, bas.errmess_ok()
 
 
-def strings_array_from_strings_csv(ss: arr.Strings) -> tuple[arr.StringsArray, bas.Errmess]:
+def strings_array_from_strings_csv(ss: arr.Strings) -> Tuple[arr.StringsArray, bas.Errmess]:
     sts = string_stream_from_strings_array(ss)
     return strings_array_from_string_stream_csv(sts)
 
 
-def row_indexed_smat_from_strings(ss: arr.Strings) -> tuple[arr.RowIndexedSmat, bas.Errmess]:
+def row_indexed_smat_from_strings(ss: arr.Strings) -> Tuple[arr.RowIndexedSmat, bas.Errmess]:
     ssa, em = strings_array_from_strings_csv(ss)
 
     if em.is_error():
@@ -321,7 +323,7 @@ def row_indexed_smat_from_strings(ss: arr.Strings) -> tuple[arr.RowIndexedSmat, 
     return arr.row_indexed_smat_from_strings_array(ssa)
 
 
-def smat_from_strings(ss: arr.Strings) -> tuple[arr.Smat, bas.Errmess]:
+def smat_from_strings(ss: arr.Strings) -> Tuple[arr.Smat, bas.Errmess]:
     ris, em = row_indexed_smat_from_strings(ss)
     if em.is_error():
         return arr.smat_default(), em

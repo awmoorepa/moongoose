@@ -9,9 +9,11 @@ import datset.amcsv as csv
 import datset.dset as dat
 import datset.numset as num
 import datset.learn as lea
+import datset.plot as plo
 
 
 def unit_tests():
+    bas.unit_test()
     arr.unit_test()
     csv.unit_test()
     dat.unit_test()
@@ -30,7 +32,7 @@ def run():
     a.assert_ok()
     a.explain()
     # a.subcols('ascent', 'distance').explain()
-    num.noomset_from_datset(a).explain()
+    # num.noomset_from_datset(a).explain()
 
     print('\n**********************\n\n')
     output = a.named_column_from_string('weight')
@@ -45,6 +47,14 @@ def run():
         assert isinstance(rw, dat.Row)
         print(f'predict {output.colname().string()} for this row: {rw.string()}')
         mod.predict(rw).explain()
+
+    b_inputs = a.subset('hour')
+    b_output = a.named_column_from_string('weight')
+    mod = lea.learner_type_linear().train(b_inputs,b_output)
+    assert isinstance(mod, lea.Model)
+    plo.show_model(mod,b_inputs,b_output)
+
+
 
 
 # Press the green button in the gutter to run the script.

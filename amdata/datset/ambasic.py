@@ -1,4 +1,5 @@
 import math
+from typing import Tuple
 
 
 def is_power_of_two(n: int) -> bool:
@@ -82,7 +83,7 @@ def character_from_string(s: str, i: int) -> Character:
     return Character(s[i])
 
 
-def float_from_string(s: str) -> tuple[float, bool]:
+def float_from_string(s: str) -> Tuple[float, bool]:
     try:
         x = float(s)
         return x, True
@@ -114,7 +115,7 @@ def string_denotes_false(s: str) -> bool:
         return False
 
 
-def bool_from_string(s: str) -> tuple[bool, bool]:
+def bool_from_string(s: str) -> Tuple[bool, bool]:
     if string_denotes_true(s):
         return True, True
     elif string_denotes_false(s):
@@ -172,6 +173,68 @@ def character_default() -> Character:
     return character_space()
 
 
+def tidiest_with_both_between_1_and_10(a: float, b: float) -> float:
+    assert 1.0 <= a
+    assert a < b
+    assert b < 10.0
+
+    if a < 5.0 <= b:
+        return 5.0
+    else:
+        largest_even_not_greater_than_b = 2.0 * math.floor(b / 2.0)
+        if a < largest_even_not_greater_than_b:
+            return largest_even_not_greater_than_b
+        else:
+            largest_int_not_greater_than_b = math.floor(b)
+            if a < largest_int_not_greater_than_b:
+                return largest_int_not_greater_than_b
+            else:
+                f = math.floor(a)
+                assert f >= 1.0
+                assert b < (f + 1)
+                return f + 0.1 * tidiest_with_both_positive(10 * (a - f), 10 * (
+                        b - f))  # Could do this with a loop, but this is much easier to read
+
+
+def tidiest_with_both_positive(a: float, b: float) -> float:
+    assert 0 < a < b
+
+    n = math.floor(math.log10(a))
+    ten_to_n = math.pow(10.0, n)
+
+    if b >= 10 * ten_to_n:
+        return 10 * ten_to_n
+    else:
+        return ten_to_n * tidiest_with_both_between_1_and_10(a / ten_to_n, min(10.0 - 1e-8, b / ten_to_n))
+
+
+def tidiest(a: float, b: float) -> float:
+    assert a < b
+
+    if a <= 0 <= b:
+        return 0.0
+    elif a > 0:
+        return tidiest_with_both_positive(a, b)
+    else:
+        assert b < 0
+        return -tidiest_with_both_positive(-b, -a)
+
+
+def test_tidiest():
+    assert loosely_equals(1.001004, tidiest(1.001003, 1.001005))
+    assert loosely_equals(2.0, tidiest(1.01, 3.0))
+    assert loosely_equals(2.0, tidiest(1.01, 3.999))
+    assert loosely_equals(200.0, tidiest(103.44, 397.4447))
+    assert loosely_equals(100.0, tidiest(99.10344, 397.4447))
+    assert loosely_equals(397.4446, tidiest(397.44455, 397.44478))
+    assert loosely_equals(-200.0, tidiest(-397.4447, -103.44))
+    assert loosely_equals(0.0, tidiest(-397.4447, 103.44))
+
+
+def loosely_lte(x: float, y: float) -> bool:
+    return x <= y or loosely_equals(x, y)
+
+
 class Interval:
     def __init__(self, lo: float, hi: float):
         self.m_lo = lo
@@ -209,6 +272,29 @@ class Interval:
     def width(self) -> float:
         return self.hi() - self.lo()
 
+    def tidiest_member(self) -> float:
+        return tidiest(self.lo(), self.hi())
+
+    def tidy_surrounder(self):
+        my_width = self.width()
+        lo_cap_width = 1 if loosely_equals(my_width, 0.0) else (0.25 * my_width)
+        result_lo = tidiest(self.lo() - lo_cap_width, self.lo())
+        min_result_width = lo_cap_width if loosely_equals(self.hi(), result_lo) else (self.hi() - result_lo)
+
+        assert min_result_width > 0.0
+        max_result_width = min_result_width * (1 + lo_cap_width)
+        result_width = tidiest(min_result_width, max_result_width)
+        result = interval_create(result_lo, result_lo + result_width)
+
+        assert result.width() > 0.0
+        assert result.loosely_fully_contains_interval(self)
+
+        return result
+
+    def loosely_fully_contains_interval(self, other) -> bool:  # other is type Interval
+        assert isinstance(other, Interval)
+        return loosely_lte(self.lo(), other.lo()) and loosely_lte(other.hi(), self.hi())
+
 
 def interval_create(lo: float, hi: float) -> Interval:
     return Interval(lo, hi)
@@ -226,7 +312,7 @@ class Maybeint:
         if not self.m_is_defined:
             assert self.m_value < 0
 
-    def int(self) -> tuple[int, bool]:
+    def int(self) -> Tuple[int, bool]:
         if self.m_is_defined:
             return self.m_value, True
         else:
@@ -247,7 +333,7 @@ def maybeint_undefined() -> Maybeint:
     return Maybeint(False, -7777)
 
 
-def string_index_of_character(s: str, target: Character) -> tuple[int, bool]:
+def string_index_of_character(s: str, target: Character) -> Tuple[int, bool]:
     assert isinstance(target, Character)
     target_as_string = target.string()
     for i, ci_as_string in enumerate(s):
@@ -285,4 +371,12 @@ def string_from_int(x: int) -> str:
     return f'{x}'
 
 
+def unit_test():
+    test_tidiest()
+
+
 expensive_assertions = True
+
+
+def interval_unit() -> Interval:
+    return interval_create(0.0, 1.0)

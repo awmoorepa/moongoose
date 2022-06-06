@@ -1,6 +1,5 @@
 import sys
-from typing import TextIO
-from collections.abc import Iterator
+from typing import TextIO, List, Tuple, Iterator
 
 import requests
 
@@ -13,6 +12,7 @@ import datset.amcsv as csv
 #     bool = 0
 #     float = 1
 #     categorical = 2
+import datset.dset
 
 
 class Colname:
@@ -174,7 +174,7 @@ def atom_from_bool(b: bool) -> Atom:
 
 
 class Valnames:
-    def __init__(self, li: list[Valname]):
+    def __init__(self, li: List[Valname]):
         self.m_valnames = li
         self.assert_ok()
 
@@ -218,6 +218,9 @@ class Valnames:
     def range(self) -> Iterator[Valname]:
         for vn in self.m_valnames:
             yield vn
+
+    def list(self) -> List[str]:
+        return self.strings().list()
 
 
 class Cats:
@@ -275,6 +278,10 @@ class Cats:
 
     def range_valnames_by_value(self) -> Iterator[Valname]:
         return self.m_value_to_valname.range()
+
+    def range_values_by_value(self) -> Iterator[int]:
+        for v in range(0, self.num_values()):
+            yield v
 
 
 def cats_create(row_to_value: arr.Ints, vns: Valnames) -> Cats:
@@ -430,6 +437,10 @@ class Column:
         bas.my_error(f'{self} base')
         return cats_default()
 
+    def bools(self) -> arr.Bools:
+        bas.my_error(f'{self} base')
+        return arr.bools_empty()
+
     def valnames(self) -> Valnames:
         bas.my_error(f'{self} base')
         return valnames_empty()
@@ -448,6 +459,15 @@ class Column:
 
     def range(self):
         bas.my_error(f'{self} base')
+
+    def is_floats(self) -> bool:
+        return False  # overridden in ColumnFloats subclass
+
+    def is_cats(self):
+        return False
+
+    def is_bools(self):
+        return False
 
 
 class NamedColumn:
@@ -486,9 +506,18 @@ class NamedColumn:
     def valnames(self) -> Valnames:
         return self.column().valnames()
 
+    def is_cats(self) -> bool:
+        return self.column().is_cats()
+
+    def is_bools(self) -> bool:
+        return self.column().is_bools()
+
+    def bools(self) -> arr.Bools:
+        return self.column().bools()
+
 
 class Colnames:
-    def __init__(self, cs: list[Colname]):
+    def __init__(self, cs: List[Colname]):
         self.m_colnames = cs
         self.assert_ok()
 
@@ -534,7 +563,7 @@ class Colnames:
         for cn in self.m_colnames:
             yield cn
 
-    def colid_from_colname(self, target: Colname) -> tuple[int, bool]:
+    def colid_from_colname(self, target: Colname) -> Tuple[int, bool]:
         for c, cln in enumerate(self.range()):
             if cln.equals(target):
                 return c, True
@@ -560,7 +589,7 @@ def colnames_from_list_of_strings(*strs: str) -> Colnames:
 
 
 class Row:
-    def __init__(self, la: list[Atom]):
+    def __init__(self, la: List[Atom]):
         self.m_atoms = la
         self.assert_ok()
 
@@ -599,7 +628,7 @@ def row_empty() -> Row:
 
 
 class Datset:
-    def __init__(self, n_rows: int, ncs: list[NamedColumn]):  # n_rows must == col length
+    def __init__(self, n_rows: int, ncs: List[NamedColumn]):  # n_rows must == col length
         self.m_num_rows = n_rows
         self.m_named_columns = ncs
         self.assert_ok()
@@ -659,7 +688,7 @@ class Datset:
     def explain(self):
         print(self.pretty_string())
 
-    def colid_from_colname(self, cn: Colname) -> tuple[int, bool]:
+    def colid_from_colname(self, cn: Colname) -> Tuple[int, bool]:
         return self.colnames().colid_from_colname(cn)
 
     def colname(self, c: int) -> Colname:
@@ -678,7 +707,7 @@ class Datset:
         assert ok
         return self.subcols_from_ints(cis)
 
-    def colids_from_colnames(self, cns: Colnames) -> tuple[arr.Ints, bool]:
+    def colids_from_colnames(self, cns: Colnames) -> Tuple[arr.Ints, bool]:
         result = arr.ints_empty()
         for i in range(cns.len()):
             i, ok = self.colid_from_colname(cns.colname(i))
@@ -708,13 +737,17 @@ class Datset:
     def atom(self, r: int, c: int) -> Atom:
         return self.column(c).atom(r)
 
-    def colid_from_string(self, colname_as_string: str) -> tuple[int, bool]:
+    def colid_from_string(self, colname_as_string: str) -> Tuple[int, bool]:
         cn = colname_from_string(colname_as_string)
         return self.colid_from_colname(cn)
 
     def named_column_from_string(self, colname_as_string: str) -> NamedColumn:
         col, ok = self.colid_from_string(colname_as_string)
-        assert ok
+        if not ok:
+            print(f'You requested column named: {colname_as_string}')
+            print(f'But available column names are: {self.colnames().pretty_string()}')
+            bas.my_error("named_column_from_string()")
+
         return self.named_column(col)
 
     def without_column(self, exclude_me: NamedColumn):  # returns Datset
@@ -744,6 +777,28 @@ class Datset:
         for nc in self.range_named_columns():
             yield nc.column()
 
+    def subset(self, *colnames_as_strings: str):  # returns Datset
+        result = datset_empty(self.num_rows())
+        for s in colnames_as_strings:
+            nc = self.named_column_from_string(s)
+            result.add(nc)
+        return result
+
+    def column_is_floats(self, col: int) -> bool:
+        return self.column(col).is_floats()
+
+    def floats(self, col) -> arr.Floats:
+        return self.column(col).floats()
+
+    def with_named_column(self, new_nc: NamedColumn):  # returns Datset
+        assert self.num_rows() == new_nc.num_rows()
+        result = datset_empty(self.num_rows())
+        for nc in self.range_named_columns():
+            result.add(nc)
+        result.add(new_nc)
+        assert isinstance(result,Datset)
+        return result
+
 
 def datset_empty(n_rows: int) -> Datset:
     return Datset(n_rows, [])
@@ -763,7 +818,7 @@ class Filename:
         assert isinstance(self.m_string, str)
         assert self.string() != ""
 
-    def open(self, readwrite: str) -> tuple[TextIO, bool]:
+    def open(self, readwrite: str) -> Tuple[TextIO, bool]:
         try:
             f = open(self.string(), readwrite)
         except FileNotFoundError:
@@ -783,7 +838,7 @@ def filename_default() -> Filename:
     return Filename("default.txt")
 
 
-def filename_from_string(f_name: str) -> tuple[Filename, bas.Errmess]:
+def filename_from_string(f_name: str) -> Tuple[Filename, bas.Errmess]:
     if is_legal_filename(f_name):
         return Filename(f_name), bas.errmess_ok()
     else:
@@ -800,7 +855,7 @@ class StringsLoadResult:
     def has_result(self) -> bool:
         return self.is_ok() or self.has_errmess()
 
-    def result(self) -> tuple[arr.Strings, bas.Errmess]:
+    def result(self) -> Tuple[arr.Strings, bas.Errmess]:
         assert self.has_result()
         return self.m_strings, self.m_errmess
 
@@ -845,12 +900,12 @@ def datset_default() -> Datset:
 
 
 def test_string():
-    s = """date,hour,person,weight\n
-        4/22/22, 15, ann, 20\n
-        4/22/22, 15, bob robertson, 10\n
-        4/22/22, 16, jan, 15\n
-        4/22/22, 16, jan, 15\n
-        4/22/22, 12, ann, 20\n"""
+    s = """date,hour,person,weight,is_late\n
+        4/22/22, 12, ann, 200,f\n
+        4/22/22, 14, bob robertson, 170,f\n
+        4/22/22, 14.5, jan, 180,t\n
+        4/22/22, 17, jan, 130,t\n
+        4/22/22, 19, ann, 130,f\n"""
     return s
 
 
@@ -866,21 +921,21 @@ class Datid:
     def string(self) -> str:
         return self.m_string
 
-    def smat_load(self) -> tuple[arr.Smat, bas.Errmess]:
+    def smat_load(self) -> Tuple[arr.Smat, bas.Errmess]:
         ss, em = self.strings_load()
         if em.is_error():
             return arr.smat_default(), em
 
         return csv.smat_from_strings(ss)
 
-    def datset_load(self) -> tuple[Datset, bas.Errmess]:
+    def datset_load(self) -> Tuple[Datset, bas.Errmess]:
         sm, em = self.smat_load()
         if em.is_error():
             return datset_default(), em
 
         return datset_from_smat(sm)
 
-    def strings_load(self) -> tuple[arr.Strings, bas.Errmess]:
+    def strings_load(self) -> Tuple[arr.Strings, bas.Errmess]:
         slr = self.strings_load_using_code()
         if slr.has_result():
             return slr.result()
@@ -922,7 +977,7 @@ class Datid:
         f.close()
         return strings_load_result_ok(result)
 
-    def string_load_using_url(self) -> tuple[str, bool]:
+    def string_load_using_url(self) -> Tuple[str, bool]:
         url = "https://github.com/awmoorepa/accumulate/blob/master/" + self.string() + "?raw=true"
         response = requests.get(url, stream=True)
 
@@ -959,7 +1014,7 @@ def datid_default() -> Datid:
     return Datid("default")
 
 
-def datid_from_string(datid_as_string: str) -> tuple[Datid, bas.Errmess]:
+def datid_from_string(datid_as_string: str) -> Tuple[Datid, bas.Errmess]:
     if is_legal_datid(datid_as_string):
         return Datid(datid_as_string), bas.errmess_ok()
     else:
@@ -995,6 +1050,12 @@ class ColumnBool(Column):
     def range(self):
         for b in self.m_bools.range():
             yield atom_from_bool(b)
+
+    def is_bools(self) -> bool:
+        return True
+
+    def bools(self) -> arr.Bools:
+        return self.m_bools
 
 
 def column_from_bools(bs: arr.Bools) -> Column:
@@ -1044,6 +1105,9 @@ class ColumnFloats(Column):
         for f in self.m_floats.range():
             yield atom_from_float(f)
 
+    def is_floats(self) -> bool:
+        return True
+
 
 def column_from_floats(fs: arr.Floats) -> Column:
     return ColumnFloats(fs)
@@ -1073,12 +1137,15 @@ class ColumnCats(Column):
         for v in self.m_cats.range_valnames_by_row():
             yield atom_from_valname(v)
 
+    def is_cats(self) -> bool:
+        return True
+
 
 def column_from_cats(cs: Cats) -> Column:
     return ColumnCats(cs)
 
 
-def named_column_from_strings(ss: arr.Strings) -> tuple[NamedColumn, bas.Errmess]:
+def named_column_from_strings(ss: arr.Strings) -> Tuple[NamedColumn, bas.Errmess]:
     if ss.len() < 2:
         return named_column_default(), bas.errmess_error("A file with named columns needs at least two rows")
 
@@ -1088,11 +1155,11 @@ def named_column_from_strings(ss: arr.Strings) -> tuple[NamedColumn, bas.Errmess
     return named_column_create(colname_create(ss.string(0)), c), bas.errmess_ok()
 
 
-def named_column_from_smat_column(sm: arr.Smat, c: int) -> tuple[NamedColumn, bas.Errmess]:
+def named_column_from_smat_column(sm: arr.Smat, c: int) -> Tuple[NamedColumn, bas.Errmess]:
     return named_column_from_strings(sm.column(c))
 
 
-def named_columns_from_smat(sm: arr.Smat) -> tuple[list[NamedColumn], bas.Errmess]:
+def named_columns_from_smat(sm: arr.Smat) -> Tuple[List[NamedColumn], bas.Errmess]:
     result = []
     for ss in sm.range_columns():
         nc, em = named_column_from_strings(ss)
@@ -1103,7 +1170,7 @@ def named_columns_from_smat(sm: arr.Smat) -> tuple[list[NamedColumn], bas.Errmes
     return result, bas.errmess_ok()
 
 
-def datset_from_string(datid_as_string: str) -> tuple[Datset, bas.Errmess]:
+def datset_from_string(datid_as_string: str) -> Tuple[Datset, bas.Errmess]:
     did, em = datid_from_string(datid_as_string)
     if em.is_error():
         return datset_default(), em
@@ -1124,7 +1191,7 @@ def load(datid_as_string: str) -> Datset:
     return ds
 
 
-def datset_from_smat(sm: arr.Smat) -> tuple[Datset, bas.Errmess]:
+def datset_from_smat(sm: arr.Smat) -> Tuple[Datset, bas.Errmess]:
     ncs, em = named_columns_from_smat(sm)
     if em.is_error():
         return datset_default(), em
@@ -1138,7 +1205,7 @@ def datset_from_smat(sm: arr.Smat) -> tuple[Datset, bas.Errmess]:
     return ds, bas.errmess_ok()
 
 
-def datset_from_strings_csv(ss: arr.Strings) -> tuple[Datset, bas.Errmess]:
+def datset_from_strings_csv(ss: arr.Strings) -> Tuple[Datset, bas.Errmess]:
     sm, em = csv.smat_from_strings(ss)
     if em.is_error():
         return datset_default(), em
@@ -1146,7 +1213,7 @@ def datset_from_strings_csv(ss: arr.Strings) -> tuple[Datset, bas.Errmess]:
     return datset_from_smat(sm)
 
 
-def datset_from_multiline_string(s: str) -> tuple[Datset, bas.Errmess]:
+def datset_from_multiline_string(s: str) -> Tuple[Datset, bas.Errmess]:
     ss = arr.strings_from_lines_in_string(s)
     return datset_from_strings_csv(ss)
 
@@ -1171,6 +1238,6 @@ def unit_test():
     assert ds.num_cols() == 4
 
 
-def smat_from_multiline_string(s: str) -> tuple[arr.Smat, bas.Errmess]:
+def smat_from_multiline_string(s: str) -> Tuple[arr.Smat, bas.Errmess]:
     ss = arr.strings_from_lines_in_string(s)
     return csv.smat_from_strings(ss)

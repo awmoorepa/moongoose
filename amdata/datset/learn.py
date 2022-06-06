@@ -1,7 +1,7 @@
 import enum
 import math
 
-from collections.abc import Iterator
+from typing import Iterator
 
 import datset.ambasic as bas
 import datset.amarrays as arr
@@ -282,11 +282,21 @@ class ModelLinear:
     def modnames(self) -> Modnames:
         return self.m_modnames
 
-    def predict(self, row: dat.Row) -> dis.Gaussian:
-        tfs = self.transformers()
-        z = tfs.transform_row(row)
+    def predict_from_z(self, z: arr.Floats) -> dis.Gaussian:
         mu = self.weights().times(z)
         return dis.gaussian_create(mu, self.sdev())
+
+    def predict_from_row(self, row: dat.Row) -> dis.Gaussian:
+        tfs = self.transformers()
+        z = tfs.transform_row(row)
+        return self.predict_from_z(z)
+
+    def predict_from_float(self,x:float)->dis.Gaussian:
+        assert self.transformers().len() == 1
+        tf = self.transformers().transformer(0)
+        assert tf.is_float()
+        z = tf.transform_float(x)
+        return self.predict_from_z(z)
 
     def transformers(self) -> noo.Transformers:
         return self.modnames().transformers()
@@ -317,7 +327,7 @@ class WeightsArray:
             assert self.m_num_cols == ws.num_cols_in_x_matrix()
 
         if len(self.m_value_to_weights) > 0:
-            self.m_value_to_weights[0].loosely_equals(weights_zero(self.m_num_cols))
+            self.m_value_to_weights[0].equals(weights_zero(self.m_num_cols))
 
     def loglike_k(self, x: arr.Fmat, y: arr.Ints, k: int) -> float:
         i = y.int(k)
@@ -420,8 +430,7 @@ def weights_array_zero(n_values: int, n_cols: int) -> WeightsArray:
     return result
 
 
-def multinomial_train_weights(x: arr.Fmat, y: arr.Ints, ms: Modnames, vns: dat.Valnames) -> WeightsArray:
-    print(f'entering multinomial_train_weights. y = {y.pretty_string()}')
+def multinomial_train_weights(x: arr.Fmat, y: arr.Ints) -> WeightsArray:
     assert x.num_rows() == y.len()
     n_values = y.max() + 1
     n_cols = x.num_cols()
@@ -434,7 +443,6 @@ def multinomial_train_weights(x: arr.Fmat, y: arr.Ints, ms: Modnames, vns: dat.V
         ll_old = ll
         for j in range(x.num_cols()):
             for i in range(1, n_values):  # math would've redundancy which is solved by zeroing first row of weights
-                print(f'iteration {iteration}, j = {j}, i = {i}, wsa =\n{wsa.pretty_string(ms, vns)}')
                 aaa = 0.0
                 bbb = 0.0
                 ccc = 0.0
@@ -448,8 +456,8 @@ def multinomial_train_weights(x: arr.Fmat, y: arr.Ints, ms: Modnames, vns: dat.V
                         u_to_euk.add(euk)
 
                     sk = u_to_euk.sum()
-                    pik = u_to_euk.float(i) / sk
-                    prob_yk_given_xk = u_to_euk.float(y.int(k)) / sk
+                    pik = u_to_euk.int(i) / sk
+                    prob_yk_given_xk = u_to_euk.int(y.int(k)) / sk
 
                     ll_k = math.log(prob_yk_given_xk)
                     aaa += ll_k
@@ -469,23 +477,17 @@ def multinomial_train_weights(x: arr.Fmat, y: arr.Ints, ms: Modnames, vns: dat.V
 
                 assert bas.loosely_equals(aaa, ll)
 
-                print(f'll(W+h*I_{i}) = {aaa} + {bbb} * h + {ccc} * h^2')
                 # ll = aaa + bbb * h + 0.5 * ccc * h^2
                 # h_star = -bbb/ccc
                 assert math.fabs(ccc) > 1e-20
                 h_star = -bbb / ccc
-                print(f'h_star = {h_star}')
                 wsa2 = wsa.deep_copy()
                 assert isinstance(wsa2, WeightsArray)
                 wsa2.increment(i, j, h_star)
                 ll_new2 = wsa2.loglike(x, y)
-                print(f'll_new2 = {ll_new2}')
                 if ll_new2 > ll:
-                    print('improved!')
                     wsa = wsa2
                     ll = ll_new2
-                else:
-                    print('no improvement')
 
         if math.fabs(ll - ll_old) / (1e-5 + math.fabs(ll - start_ll)) < 1e-3:
             return wsa
@@ -557,7 +559,7 @@ def train_multinomial_model(inputs: dat.Datset, output: dat.NamedColumn) -> Mode
     cs = output.cats()
     y = cs.values()
     ms = modnames_create(tfs, output.colname())
-    b = multinomial_train_weights(x.fmat(), y, ms, output.valnames())
+    b = multinomial_train_weights(x.fmat(), y)
     return multinomial_model_create(ms, cs.valnames(), b)
 
 
@@ -617,7 +619,7 @@ class Model:
     def predict(self, row: dat.Row) -> dis.Distribution:
         lt = self.learntype()
         if lt == Learntype.linear:
-            return dis.distribution_from_gaussian(self.linear_model().predict(row))
+            return dis.distribution_from_gaussian(self.linear_model().predict_from_row(row))
         elif lt == Learntype.logistic:
             return dis.distribution_from_binomial(self.logistic_model().predict(row))
         elif lt == Learntype.multinomial:
@@ -629,6 +631,31 @@ class Model:
         assert self.learntype() == Learntype.multinomial
         assert isinstance(self.m_data, ModelMultinomial)
         return self.m_data
+
+    def transformers(self):
+        lt = self.learntype()
+        if lt == Learntype.linear:
+            return self.linear_model().transformers()
+        elif lt == Learntype.logistic:
+            return self.logistic_model().transformers()
+        elif lt == Learntype.multinomial:
+            return self.multinomial_model().transformers()
+        else:
+            bas.my_error('bad learntype')
+
+    def predict_floats(self, xs:arr.Floats)->arr.Floats:
+        assert self.transformers().len() == 1
+        lt = self.learntype()
+        assert lt == Learntype.linear or lt == Learntype.logistic
+
+        result = arr.floats_empty()
+        for x in xs.range():
+            result.add(self.predict_from_float(x).mean())
+
+        return result
+
+    def predict_from_float(self, x:float)->dis.Distribution:
+        return dis.distribution_from_gaussian(self.linear_model().predict_from_float(x))
 
 
 # Pr(Yi=1|x1i,...xMi) = 1/(1+b^{-beta.z}) where the sigmoid function has base b (for us b = e)
@@ -669,29 +696,22 @@ def train_glm(inputs: arr.Fmat, output: dat.Column, lt: Learntype) -> Weights:
     while True:
         ll_old = ll
         for col in range(inputs.num_cols()):
-            print(f'iter {iteration}, col {col}: ll = {ll}, ws = {ws.floats().pretty_string()}')
             aaa = ws.loglike(inputs, output, lt)
             assert bas.loosely_equals(aaa, ll)
             bbb = ws.loglike_derivative(inputs, output, lt, col)
             ccc = ws.loglike_second_derivative(inputs, output, lt, col)
 
-            print(f'll(h) = {aaa} + {bbb} * h + {ccc} * h^2')
             # ll = aaa + bbb * h + 0.5 * ccc * h^2
             # h_star = -bbb/ccc
             assert math.fabs(ccc) > 1e-20
             h_star = -bbb / ccc
-            print(f'h_star = {h_star}')
             ws2 = ws.deep_copy()
             assert isinstance(ws2, Weights)
             ws2.increment(col, h_star)
             ll_new2 = ws2.loglike(inputs, output, lt)
-            print(f'll_new2 = {ll_new2}')
             if ll_new2 > ll:
-                print('improved!')
                 ws = ws2
                 ll = ll_new2
-            else:
-                print('no improvement')
 
         if math.fabs(ll - ll_old) / (math.fabs(ll - start_ll)) < 1e-6:
             return ws

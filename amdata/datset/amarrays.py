@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from typing import Tuple, List, Iterator
 
 import datset.ambasic as bas
 
@@ -26,7 +26,7 @@ def is_list_of_floats(fs):
 
 
 class Bools:
-    def __init__(self, bs: list[bool]):
+    def __init__(self, bs: List[bool]):
         self.m_bools = bs
         self.assert_ok()
 
@@ -52,7 +52,7 @@ class Bools:
 
 
 class Floats:
-    def __init__(self, fs: list[float]):
+    def __init__(self, fs: List[float]):
         self.m_floats = fs
         self.assert_ok()
 
@@ -150,6 +150,22 @@ class Floats:
         for x in others.range():
             self.add(x)
 
+    def tidy_surrounder(self) -> bas.Interval:
+        return self.interval().tidy_surrounder()
+
+    def interval(self) -> bas.Interval:
+        assert self.len() > 0
+        v0 = self.float(0)
+        iv = bas.interval_create(v0, v0)
+
+        for v in self.range():
+            iv.expand_to_include(v)
+
+        return iv
+
+    def list(self) -> List[float]:
+        return self.m_floats
+
 
 class Namer:
     def __init__(self):
@@ -182,7 +198,7 @@ class Namer:
         if bas.is_power_of_two(self.len()):
             self.assert_ok()
 
-    def key_from_name(self, name: str) -> tuple[int, bool]:
+    def key_from_name(self, name: str) -> Tuple[int, bool]:
         if name in self.m_name_to_key:
             return self.m_name_to_key[name], True
         else:
@@ -228,7 +244,7 @@ def is_list_of_list_of_string(x: list) -> bool:
     return True
 
 
-def concatenate_list_of_strings(ls: list[str]) -> str:
+def concatenate_list_of_strings(ls: List[str]) -> str:
     result = ""
     for s in ls:
         result = result + s
@@ -250,7 +266,7 @@ def is_list_of_ints(ins: list) -> bool:
 
 
 class Ints:
-    def __init__(self, ins: list[int]):
+    def __init__(self, ins: List[int]):
         self.m_ints = ins
         self.assert_ok()
 
@@ -265,13 +281,14 @@ class Ints:
         return len(self.m_ints)
 
     def add(self, i: int):
+        assert isinstance(i, int)
         self.m_ints.append(i)
 
     def set(self, i: int, v: int):
         assert 0 <= i < self.len()
         self.m_ints[i] = v
 
-    def increment(self, i: int):
+    def increment_by_one(self, i: int):
         assert 0 <= i < self.len()
         self.m_ints[i] += 1
 
@@ -314,7 +331,7 @@ class Ints:
             assert v >= 0
             while result.len() <= v:
                 result.add(0)
-            result.increment(v)
+            result.increment_by_one(v)
         return result
 
     def min(self) -> int:
@@ -389,6 +406,18 @@ class Ints:
                 dic[v] = True
         return False
 
+    def list(self) -> List[int]:
+        return self.m_ints
+
+    def plus(self, other):  # other is Ints and return is Ints
+        assert isinstance(other, Ints)
+        assert self.len() == other.len()
+        result = ints_empty()
+        for a, b in zip(self.range(), other.range()):
+            result.add(a + b)
+        assert isinstance(result, Ints)
+        return result
+
 
 def indexes_of_sorted(li: list) -> Ints:
     pairs = zip(range(0, len(li)), li)
@@ -420,7 +449,7 @@ def identity_ints(n: int) -> Ints:
 
 
 class Strings:
-    def __init__(self, ss: list[str]):
+    def __init__(self, ss: List[str]):
         self.m_strings = ss
         self.assert_ok()
 
@@ -460,7 +489,7 @@ class Strings:
         result += right
         return result
 
-    def pretty_strings(self) -> list[str]:
+    def pretty_strings(self) -> List[str]:
         start = " {"
         finish = " }"
         result = []
@@ -543,6 +572,9 @@ class Strings:
         for s in self.m_strings:
             yield s
 
+    def list(self) -> List[str]:
+        return self.m_strings
+
 
 def strings_empty() -> Strings:
     return Strings([])
@@ -553,7 +585,7 @@ def ints_empty() -> Ints:
 
 
 class StringsArray:
-    def __init__(self, sss: list[Strings]):
+    def __init__(self, sss: List[Strings]):
         self.m_strings_array = sss
         self.assert_ok()
 
@@ -645,7 +677,7 @@ def bools_singleton(b: bool) -> Bools:
     return result
 
 
-def bools_from_strings(ss: Strings) -> tuple[Bools, bool]:
+def bools_from_strings(ss: Strings) -> Tuple[Bools, bool]:
     result = bools_empty()
     for s in ss.range():
         b, ok = bas.bool_from_string(s)
@@ -661,7 +693,7 @@ def floats_empty():
     return Floats([])
 
 
-def floats_from_strings(ss: Strings) -> tuple[Floats, bool]:
+def floats_from_strings(ss: Strings) -> Tuple[Floats, bool]:
     result = floats_empty()
     for s in ss.range():
         f, ok = bas.float_from_string(s)
@@ -694,18 +726,18 @@ def unit_test_namer():
     test_namer_bad(n, "c")
 
 
-def strings_from_list(ls: list[str]) -> Strings:
+def strings_from_list(ls: List[str]) -> Strings:
     return Strings(ls)
 
 
-def test_floats_ok(ls: list[str], total: float):
+def test_floats_ok(ls: List[str], total: float):
     ss = strings_from_list(ls)
     fs, ok = floats_from_strings(ss)
     assert ok
     assert bas.loosely_equals(fs.sum(), total)
 
 
-def test_floats_bad(ls: list[str]):
+def test_floats_bad(ls: List[str]):
     ss = strings_from_list(ls)
     fs, ok = floats_from_strings(ss)
     assert not ok
@@ -845,7 +877,7 @@ def row_indexed_smat_with_no_rows(n_cols: int) -> RowIndexedSmat:
     return RowIndexedSmat(n_cols)
 
 
-def row_indexed_smat_from_list(li: list[list[str]]) -> RowIndexedSmat:
+def row_indexed_smat_from_list(li: List[List[str]]) -> RowIndexedSmat:
     assert isinstance(li, list)
     assert len(li) > 0
     assert isinstance(li[0], list)
@@ -930,20 +962,51 @@ def smat_single_row(first_row: Strings) -> Smat:
     return smat_create(row_indexed_smat_single_row(first_row))
 
 
+class FloatsArray:
+    def __init__(self, li: List[Floats]):
+        self.m_list = li
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_list, list)
+        for ins in self.m_list:
+            assert isinstance(ins, Floats)
+            ins.assert_ok()
+
+    def range(self) -> Iterator[Floats]:
+        for fs in self.m_list:
+            yield fs
+
+    def add(self, fs: Floats):
+        self.m_list.append(fs)
+
+    def floats(self, i: int) -> Floats:
+        assert 0 <= i < self.len()
+        return self.m_list[i]
+
+    def len(self) -> int:
+        return len(self.m_list)
+
+    def list_of_lists(self) -> List[List[float]]:
+        result = []
+        for fs in self.range():
+            result.append(fs.list())
+        return result
+
+
 class RowIndexedFmat:
     def __init__(self, n_cols: int):
         self.m_num_cols = n_cols
-        self.m_row_to_col_to_value = []
+        self.m_row_to_col_to_value = floats_array_empty()
         self.assert_ok()
 
     def assert_ok(self):
         assert isinstance(self.m_num_cols, int)
         assert self.m_num_cols >= 0
-        assert isinstance(self.m_row_to_col_to_value, list)
+        assert isinstance(self.m_row_to_col_to_value, FloatsArray)
+        self.m_row_to_col_to_value.assert_ok()
 
-        for row in self.m_row_to_col_to_value:
-            assert isinstance(row, Floats)
-            row.assert_ok()
+        for row in self.m_row_to_col_to_value.range():
             assert row.len() == self.m_num_cols
 
     def transpose(self):  # returns RowIndexedFmat
@@ -977,21 +1040,23 @@ class RowIndexedFmat:
 
     def add_row(self, fs: Floats):
         assert self.num_cols() == fs.len()
-        self.m_row_to_col_to_value.append(fs)
+        self.m_row_to_col_to_value.add(fs)
 
     def range_rows(self) -> Iterator[Floats]:
-        for fs in self.m_row_to_col_to_value:
-            yield fs
+        return self.m_row_to_col_to_value.range()
 
     def num_cols(self) -> int:
         return self.m_num_cols
 
     def num_rows(self) -> int:
-        return len(self.m_row_to_col_to_value)
+        return self.m_row_to_col_to_value.len()
 
     def floats(self, r: int) -> Floats:
         assert 0 <= r < self.num_rows()
-        return self.m_row_to_col_to_value[r]
+        return self.m_row_to_col_to_value.floats(r)
+
+    def increment(self, r: int, col: int, delta: float):
+        self.floats(r).increment(col, delta)
 
 
 def row_indexed_fmat_with_no_rows(n_cols: int):
@@ -1079,7 +1144,7 @@ def fmat_create(rif: RowIndexedFmat) -> Fmat:
     return Fmat(rif)
 
 
-def floats_all_constant(n, c: float) -> Floats:
+def floats_all_constant(n: int, c: float) -> Floats:
     result = floats_empty()
     for i in range(n):
         result.add(c)
@@ -1110,7 +1175,7 @@ def row_indexed_smat_default():
     return row_indexed_smat_unit('default')
 
 
-def row_indexed_smat_from_strings_array(ssa: StringsArray) -> tuple[RowIndexedSmat, bas.Errmess]:
+def row_indexed_smat_from_strings_array(ssa: StringsArray) -> Tuple[RowIndexedSmat, bas.Errmess]:
     if not ssa:
         return row_indexed_smat_default(), bas.errmess_error(
             "Can't make a row indexed smat from an empty array of strings")
@@ -1149,10 +1214,10 @@ def row_indexed_fmat_singleton(x: float) -> RowIndexedFmat:
 
 
 def row_indexed_fmat_default() -> RowIndexedFmat:
-    return row_indexed_fmat_singleton(0.0)
+    return row_indexed_fmat_with_no_rows(0)
 
 
-def row_indexed_fmat_from_smat(sm: Smat) -> tuple[RowIndexedFmat, bas.Errmess]:
+def row_indexed_fmat_from_smat(sm: Smat) -> Tuple[RowIndexedFmat, bas.Errmess]:
     result = row_indexed_fmat_with_no_rows(sm.num_cols())
     for ss in sm.range_rows():
         fs, ok = floats_from_strings(ss)
@@ -1168,9 +1233,265 @@ def fmat_default() -> Fmat:
     return fmat_create(row_indexed_fmat_default())
 
 
-def fmat_from_smat(sm: Smat) -> tuple[Fmat, bas.Errmess]:
+def fmat_from_smat(sm: Smat) -> Tuple[Fmat, bas.Errmess]:
     rif, err = row_indexed_fmat_from_smat(sm)
     if err.is_error():
         return fmat_default(), err
 
     return fmat_create(rif), bas.errmess_ok()
+
+
+def row_indexed_fmat_of_zeroes(n_rows: int, n_cols: int) -> RowIndexedFmat:
+    result = row_indexed_fmat_with_no_rows(n_cols)
+    for r in range(n_rows):
+        result.add_row(floats_all_zero(n_cols))
+    return result
+
+
+def floats_array_empty() -> FloatsArray:
+    return FloatsArray([])
+
+
+def floats_array_of_empties(n_elements: int) -> FloatsArray:
+    result = floats_array_empty()
+    for i in range(n_elements):
+        result.add(floats_empty())
+    return result
+
+
+#  *************************************************************************
+
+class IntsArray:
+    def __init__(self, li: List[Ints]):
+        self.m_list = li
+        self.assert_ok()
+
+    def range(self) -> Iterator[Ints]:
+        for fs in self.m_list:
+            yield fs
+
+    def add(self, ins: Ints):
+        self.m_list.append(ins)
+
+    def assert_ok(self):
+        assert isinstance(self.m_list, list)
+        for ins in self.m_list:
+            assert isinstance(ins, Ints)
+            ins.assert_ok()
+
+    def ints(self, i: int) -> Ints:
+        assert 0 <= i < self.len()
+        return self.m_list[i]
+
+    def len(self) -> int:
+        return len(self.m_list)
+
+    def pretty_strings(self) -> Strings:
+        return self.strings_array().pretty_strings()
+
+    def strings_array(self) -> StringsArray:
+        result = strings_array_empty()
+        for ins in self.range():
+            result.add(ins.strings())
+        return result
+
+
+class RowIndexedImat:
+    def __init__(self, n_cols: int):
+        self.m_num_cols = n_cols
+        self.m_row_to_col_to_value = ints_array_empty()
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_num_cols, int)
+        assert self.m_num_cols >= 0
+        assert isinstance(self.m_row_to_col_to_value, IntsArray)
+        self.m_row_to_col_to_value.assert_ok()
+
+        for row in self.m_row_to_col_to_value.range():
+            assert row.len() == self.m_num_cols
+
+    def transpose(self):  # returns RowIndexedImat
+        self_n_cols = self.num_cols()
+        result_n_rows = self_n_cols
+
+        result = row_indexed_imat_with_no_columns(result_n_rows)
+        for self_row in self.range_rows():
+            result.add_column(self_row)
+
+        assert isinstance(result, RowIndexedImat)
+        assert result.num_rows() == self.num_cols()
+        assert result.num_cols() == self.num_rows()
+
+        result.assert_ok()
+
+        return result
+
+    def add_column(self, col: Ints):
+        assert col.len() == self.num_rows()
+        for row, f in zip(self.range_rows(), col.range()):
+            row.add(f)
+        self.m_num_cols += 1
+
+    def equals(self, other) -> bool:
+        assert isinstance(other, RowIndexedImat)
+        for a, b in zip(self.range_rows(), other.range_rows()):
+            if not a.equals(b):
+                return False
+        return True
+
+    def add_row(self, ins: Ints):
+        assert self.num_cols() == ins.len()
+        self.m_row_to_col_to_value.add(ins)
+
+    def range_rows(self) -> Iterator[Ints]:
+        return self.m_row_to_col_to_value.range()
+
+    def num_cols(self) -> int:
+        return self.m_num_cols
+
+    def num_rows(self) -> int:
+        return self.m_row_to_col_to_value.len()
+
+    def ints(self, r: int) -> Ints:
+        assert 0 <= r < self.num_rows()
+        return self.m_row_to_col_to_value.ints(r)
+
+    def increment_by_one(self, r: int, col: int):
+        self.ints(r).increment_by_one(col)
+
+    def pretty_string(self) -> str:
+        return self.pretty_strings().concatenate_fancy('', '\n', '')
+
+    def pretty_strings(self) -> Strings:
+        return self.m_row_to_col_to_value.pretty_strings()
+
+
+def row_indexed_imat_with_no_rows(n_cols: int):
+    return RowIndexedImat(n_cols)
+
+
+def row_indexed_imat_with_no_columns(n_rows: int) -> RowIndexedImat:
+    result = row_indexed_imat_with_no_rows(0)
+    for i in range(n_rows):
+        result.add_row(ints_empty())
+    return result
+
+
+class Imat:
+    def __init__(self, rif: RowIndexedImat):
+        self.m_row_to_col_to_value = rif
+        self.m_col_to_row_to_value = rif.transpose()
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_row_to_col_to_value, RowIndexedImat)
+        self.m_row_to_col_to_value.assert_ok()
+        assert isinstance(self.m_col_to_row_to_value, RowIndexedImat)
+        self.m_col_to_row_to_value.assert_ok()
+        tr = self.m_col_to_row_to_value.transpose()
+        assert isinstance(tr, RowIndexedImat)
+        print(f'self.m_row_to_col:\n{self.m_row_to_col_to_value.pretty_string()}')
+        print(f'self.m_col_to_row:\n{self.m_col_to_row_to_value.pretty_string()}')
+        assert self.m_row_to_col_to_value.equals(tr)
+
+    def num_rows(self) -> int:
+        return self.m_row_to_col_to_value.num_rows()
+
+    def row(self, r: int) -> Ints:
+        return self.m_row_to_col_to_value.ints(r)
+
+    def num_cols(self) -> int:
+        assert self.num_rows() > 0
+        return self.row(0).len()
+
+    def column(self, c: int) -> Ints:
+        return self.m_col_to_row_to_value.ints(c)
+
+    def int(self, r: int, c: int) -> int:
+        return self.row(r).int(c)
+
+    def loosely_equals(self, other) -> bool:
+        assert isinstance(other, Imat)
+        return self.m_row_to_col_to_value.equals(other.m_row_to_col_to_value)
+
+    def pretty_strings(self) -> Strings:
+        return self.smat().pretty_strings()
+
+    def row_indexed_smat(self) -> RowIndexedSmat:
+        assert self.num_rows() > 0
+        result = row_indexed_smat_single_row(self.row(0).strings())
+        for i in range(1, self.num_rows()):
+            result.add(self.row(i).strings())
+        return result
+
+    def smat(self) -> Smat:
+        return smat_create(self.row_indexed_smat())
+
+    def pretty_strings_with_headings(self, top_left: str, left: Strings, top: Strings):
+        return self.smat().pretty_strings_with_headings(top_left, left, top)
+
+    def range_rows(self) -> Iterator[Ints]:
+        return self.m_row_to_col_to_value.range_rows()
+
+    def range_columns(self) -> Iterator[Ints]:
+        return self.m_col_to_row_to_value.range_rows()
+
+    def pretty_string(self) -> str:
+        return self.pretty_strings().concatenate_fancy('', '\n', '')
+
+    def list_of_lists(self) -> List[List[int]]:
+        result = []
+        for ins in self.range_rows():
+            result.append(ins.list())
+        return result
+
+
+def imat_create(rif: RowIndexedImat) -> Imat:
+    return Imat(rif)
+
+
+def ints_all_constant(n, c: int) -> Ints:
+    result = ints_empty()
+    for i in range(n):
+        result.add(c)
+    return result
+
+
+def ints_all_zero(n: int) -> Ints:
+    return ints_all_constant(n, 0)
+
+
+def ints_singleton(i: int) -> Ints:
+    result = ints_empty()
+    result.add(i)
+    return result
+
+
+def ints_array_empty() -> IntsArray:
+    return IntsArray([])
+
+
+def ints_array_of_empties(n_elements: int) -> IntsArray:
+    result = ints_array_empty()
+    for i in range(n_elements):
+        result.add(ints_empty())
+    return result
+
+
+def row_indexed_imat_of_zeroes(n_rows: int, n_cols: int) -> RowIndexedImat:
+    result = row_indexed_imat_with_no_rows(n_cols)
+    for r in range(n_rows):
+        result.add_row(ints_all_zero(n_cols))
+    return result
+
+
+def floats_from_range(lo: float, hi: float, n_elements: int) -> Floats:
+    assert lo < hi
+    assert n_elements > 1
+    delta = (hi - lo) / (n_elements - 1)
+    result = floats_empty()
+    for i in range(n_elements - 1):
+        result.add(lo * delta * i)
+    result.add(hi)
+    return result
