@@ -118,8 +118,6 @@ class Noomset:
         assert isinstance(self.m_noomnames, Noomnames)
         self.m_noomnames.assert_ok()
         assert isinstance(self.m_row_to_col_to_value, arr.Fmat)
-        print(f'fmat =\n{self.m_row_to_col_to_value.pretty_string()}')
-        print(f'n_noomnames = {self.num_noomnames()}, fm_n_cols = {self.m_row_to_col_to_value.num_cols()}')
         self.m_row_to_col_to_value.assert_ok()
         assert self.num_noomnames() + 1 == self.num_cols_in_x_matrix()
 
@@ -578,16 +576,10 @@ def noomset_from_smat(sm: arr.Smat) -> Tuple[Noomset, bas.Errmess]:
 def noomset_from_multiline_string(s: str) -> Tuple[Noomset, bas.Errmess]:
     sm, em = dat.smat_from_multiline_string(s)
 
-    print(f'noomset_from first em = {em.string()}')
-
     if em.is_error():
         return noomset_default(), em
 
-    print(f'sm(noomset_from_multiline) =\n{sm.pretty_string()}')
     ns, em2 = noomset_from_smat(sm)
-
-    print(f'em2(noomset_from_multiline) = {em2.string()}')
-    print(f'noomset_from_smat(noomset_from_multiline) = \n{ns.pretty_string()}')
 
     return ns, em2
 

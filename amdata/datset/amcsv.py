@@ -318,8 +318,6 @@ def row_indexed_smat_from_strings(ss: arr.Strings) -> Tuple[arr.RowIndexedSmat, 
     if em.is_error():
         return arr.row_indexed_smat_default(), em
 
-    print(f'ssa =\n{ssa.pretty_string()}')
-
     return arr.row_indexed_smat_from_strings_array(ssa)
 
 

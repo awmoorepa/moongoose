@@ -1,160 +1,16 @@
-from typing import List, Iterator
+from typing import List, Iterator, Tuple
 
 import matplotlib.pyplot as plt
 
 import datset.dset as dat
 import datset.amarrays as arr
 import datset.ambasic as bas
-import datset.geometry as geo
 import datset.numset as noo
 import datset.learn as lea
 
 
-class Axis:
-    def __init__(self, label: str, limits: bas.Interval):
-        self.m_label = label
-        self.m_limits = limits
-        self.assert_ok()
-
-    def assert_ok(self):
-        assert isinstance(self.m_label, str)
-        assert isinstance(self.m_limits, bas.Interval)
-        self.m_limits.assert_ok()
-        assert self.m_limits.width() > 0
-
-    def interval(self) -> bas.Interval:
-        return self.m_limits
-
-    def label(self) -> str:
-        return self.m_label
-
-
-def set_plt_limits(is_x_axis: bool, plt_axis, limits: bas.Interval):
-    lo = limits.lo()
-    hi = limits.hi()
-    if is_x_axis:
-        plt_axis.set_xlim(lo, hi)
-    else:
-        plt_axis.set_ylim(lo, hi)
-
-
-def set_plt_label(is_x_axis: bool, plt_axis, label: str):
-    if is_x_axis:
-        plt_axis.set_xlabel(label)
-    else:
-        plt_axis.set_ylabel(label)
-
-
-def set_plt_axis(is_x_axis: bool, plt_axis, am_axis: Axis):
-    set_plt_limits(is_x_axis, plt_axis, am_axis.interval())
-    set_plt_label(is_x_axis, plt_axis, am_axis.label())
-
-
-def set_plt_x_axis(plt_axis, am_axis: Axis):
-    set_plt_axis(True, plt_axis, am_axis)
-
-
-def set_plt_y_axis(plt_axis, am_axis: Axis):
-    set_plt_axis(False, plt_axis, am_axis)
-
-
-class Diagram:
-    def __init__(self, x: Axis, y: Axis, vs: geo.Vecs):
-        self.m_x_axis = x
-        self.m_y_axis = y
-        self.m_data = vs
-        self.assert_ok()
-
-    def assert_ok(self):
-        assert isinstance(self.m_x_axis, Axis)
-        self.m_x_axis.assert_ok()
-        assert isinstance(self.m_y_axis, Axis)
-        self.m_y_axis.assert_ok()
-        assert isinstance(self.m_data, geo.Vecs)
-        self.m_data.assert_ok()
-        assert self.data_border().loosely_contains_vecs(self.vecs())
-
-    def data_border(self) -> geo.Rect:
-        return geo.rect_from_intervals(self.x_interval(), self.y_interval())
-
-    def vecs(self) -> geo.Vecs:
-        return self.m_data
-
-    def x_interval(self) -> bas.Interval:
-        return self.x_axis().interval()
-
-    def x_axis(self) -> Axis:
-        return self.m_x_axis
-
-    def y_interval(self) -> bas.Interval:
-        return self.y_axis().interval()
-
-    def y_axis(self) -> Axis:
-        return self.m_y_axis
-
-    def show(self):
-        fig, ax = plt.subplots()
-        x, y = self.vecs().unzip()
-        xli = x.list()
-        yli = y.list()
-        ax.scatter(xli, yli)
-        set_plt_x_axis(ax, self.x_axis())
-        set_plt_y_axis(ax, self.y_axis())
-        plt.show()
-
-
-class NamedFloats:
-    def __init__(self, name: str, fs: arr.Floats):
-        self.m_name = name
-        self.m_floats = fs
-        self.assert_ok()
-
-    def assert_ok(self):
-        assert isinstance(self.m_name, str)
-        assert isinstance(self.m_floats, arr.Floats)
-        self.m_floats.assert_ok()
-
-    def axis(self) -> Axis:
-        return axis_create(self.name(), self.floats().tidy_surrounder())
-
-    def floats(self) -> arr.Floats:
-        return self.m_floats
-
-    def name(self) -> str:
-        return self.m_name
-
-
-def named_floats_create(name: str, fs: arr.Floats) -> NamedFloats:
-    return NamedFloats(name, fs)
-
-
-def named_floats_from_datset(ds: dat.Datset, col: int) -> NamedFloats:
-    assert ds.column_is_floats(col)
-    return named_floats_create(ds.colname(col).string(), ds.floats(col))
-
-
-def diagram_create(x: Axis, y: Axis, vs: geo.Vecs) -> Diagram:
-    return Diagram(x, y, vs)
-
-
-def diagram_bivariate_ff(x: NamedFloats, y: NamedFloats) -> Diagram:
-    return diagram_create(x.axis(), y.axis(), geo.vecs_from_floats(x.floats(), y.floats()))
-
-
-def axis_create(name: str, limits: bas.Interval) -> Axis:
-    return Axis(name, limits)
-
-
-def axis_default():
-    return axis_create('default', bas.interval_unit())
-
-
-def diagram_default():
-    return diagram_create(axis_default(), axis_default(), geo.vecs_empty())
-
-
 def datset_encoding(ds: dat.Datset) -> str:
-    assert isinstance(ds,dat.Datset)
+    assert isinstance(ds, dat.Datset)
     result = ""
     for c in ds.range_columns():
         result += 'f' if c.is_floats() else 'c'
@@ -186,6 +42,15 @@ class Floatvec:
 
     def add(self, f: float):
         self.m_floats.add(f)
+
+    def min(self) -> float:
+        return self.floats().min()
+
+    def max(self) -> float:
+        return self.floats().max()
+
+    def tidy_extremes(self) -> Tuple[float, float]:
+        return self.floats().tidy_extremes()
 
 
 def floatvec_create(label: str, fs: arr.Floats):
@@ -457,21 +322,45 @@ def show_model_ff(mod: lea.Model, x: Floatvec, y: Floatvec):
     ax.scatter(x.list(), y.list())
     ax.set_xlabel(x.label())
     ax.set_ylabel(y.label())
-    lo, hi = ax.xlim()
+    lo, hi = ax.xaxis.get_data_interval()
+    print(f'lo={lo}, hi={hi}')
     xs = arr.floats_from_range(lo, hi, 101)
-    ys = mod.predict_floats(xs)
+    print(f'xs = {xs.pretty_string()}')
+    ys = mod.predict_linear(xs)
     ax.plot(xs.list(), ys.list())
     plt.show()
 
 
-def show_model(mod: lea.Model, inputs: dat.Datset, output: dat.NamedColumn):
+def show_model_fc(mod: lea.Model, x: Floatvec, y: Catvec):
+    fig, (ax_top, ax_bottom) = plt.subplots(2)
+    fvs = y.floats_array(x)
+    ax_bottom.hist(fvs.list_of_lists(), stacked=True, label=y.names())
+    ax_bottom.set_xlabel(x.label())
+    ax_bottom.set_ylabel(f'frequency({y.label()})')
+    ax_bottom.legend()
+
+    lo, hi = x.tidy_extremes()
+    xs = arr.floats_from_range(lo, hi, 101)
+    value_to_ys = mod.predict_multinomial_from_floats(xs)
+    for ys, label in zip(value_to_ys.range_rows(), y.names()):
+        ax_top.plot(xs.list(), ys.list(), label=label)
+    ax_top.set_ylabel(f'P({y.label()})')
+    ax_bottom.legend()
+    plt.show()
+
+
+def show_model(mod: lea.Model, inputs: dat.Datset, output: dat.Datset):
+    assert output.num_cols() == 1
+    assert output.num_rows() == inputs.num_rows()
     mod_encoding = model_encoding(mod)
-    train = inputs.with_named_column(output)
-    assert isinstance(train,dat.Datset)
+    train = inputs.with_named_column(output.named_column(0))
+    assert isinstance(train, dat.Datset)
     ds_encoding = datset_encoding(train)
     assert mod_encoding == ds_encoding
 
     if ds_encoding == 'ff':
-        show_model_ff(mod, fvc(inputs, 0), fvc_from_named_column(output))
+        show_model_ff(mod, fvc(inputs, 0), fvc(output, 0))
+    elif ds_encoding == 'fc':
+        show_model_fc(mod, fvc(inputs, 0), cvc(output, 0))
     else:
         print(f"Sorry, I can't plot data and model with these characteristics: {ds_encoding}")

@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Tuple, List, Iterator
 
 import datset.ambasic as bas
@@ -49,6 +50,12 @@ class Bools:
     def range(self):
         for b in self.m_bools:
             yield b
+
+    def subset(self, indexes: Ints) -> Bools:
+        result = bools_empty()
+        for i in indexes.range():
+            result.add(self.bool(i))
+        return result
 
 
 class Floats:
@@ -165,6 +172,53 @@ class Floats:
 
     def list(self) -> List[float]:
         return self.m_floats
+
+    def min(self) -> float:
+        return self.float(self.argmin())
+
+    def argmin(self) -> int:
+        return self.arg_extreme(False)
+
+    def max(self) -> float:
+        return self.float(self.argmax())
+
+    def argmax(self) -> int:
+        return self.arg_extreme(True)
+
+    def arg_extreme(self, is_max: bool) -> int:
+        assert self.len() > 0
+        extreme_index = 0
+        extreme_value = self.float(extreme_index)
+
+        for i, v in enumerate(self.range()):
+            found_better = (v > extreme_value) if is_max else (v < extreme_value)
+            if found_better:
+                extreme_value = v
+                extreme_index = i
+
+        return extreme_index
+
+    def add_many(self, other):  # other type is also floats
+        assert isinstance(other, Floats)
+        for f in other.range():
+            self.add(f)
+
+    def tidy_extremes(self) -> Tuple[float, float]:
+        return self.interval().extremes()
+
+    def plus(self, other):  # returns type Floats. other type is floats
+        assert isinstance(other, Floats)
+        result = floats_empty()
+        for a, b in zip(self.range(), other.range()):
+            result.add(a + b)
+        assert isinstance(result, Floats)
+        return result
+
+    def subset(self, indexes: Ints) -> Floats:
+        result = floats_empty()
+        for i in indexes.range():
+            result.add(self.float(i))
+        return result
 
 
 class Namer:
@@ -416,6 +470,29 @@ class Ints:
         for a, b in zip(self.range(), other.range()):
             result.add(a + b)
         assert isinstance(result, Ints)
+        return result
+
+    def shuffle(self):
+        for i in range(self.len()):
+            other_index = i + bas.int_random(self.len() - i)
+            self.swap_elements(i, other_index)
+
+    def swap_elements(self, index_a: int, index_b: int):
+        if index_a != index_b:
+            temp = self.int(index_a)
+            self.set(index_a, self.int(index_b))
+            self.set(index_a, temp)
+
+    def first_n_elements(self, n_in_result: int) -> Ints:
+        result = ints_empty()
+        for i in range(n_in_result):
+            result.add(self.int(i))
+        return result
+
+    def last_n_elements(self, n_in_result: int) -> Ints:
+        result = ints_empty()
+        for i in range(self.len() - n_in_result - 1, self.len()):
+            result.add(self.int(i))
         return result
 
 
@@ -933,6 +1010,7 @@ class Smat:
         assert self.num_rows() == left.len()
         assert self.num_cols() == top.len()
         first_row = strings_singleton(top_left).with_many(top)
+
         result = row_indexed_smat_single_row(first_row)
 
         for lf, r in zip(left.range(), self.range_rows()):
@@ -1391,8 +1469,6 @@ class Imat:
         self.m_col_to_row_to_value.assert_ok()
         tr = self.m_col_to_row_to_value.transpose()
         assert isinstance(tr, RowIndexedImat)
-        print(f'self.m_row_to_col:\n{self.m_row_to_col_to_value.pretty_string()}')
-        print(f'self.m_col_to_row:\n{self.m_col_to_row_to_value.pretty_string()}')
         assert self.m_row_to_col_to_value.equals(tr)
 
     def num_rows(self) -> int:
@@ -1492,6 +1568,19 @@ def floats_from_range(lo: float, hi: float, n_elements: int) -> Floats:
     delta = (hi - lo) / (n_elements - 1)
     result = floats_empty()
     for i in range(n_elements - 1):
-        result.add(lo * delta * i)
+        result.add(lo + delta * i)
     result.add(hi)
+    return result
+
+
+def ints_identity(n: int) -> Ints:
+    result = ints_empty()
+    for i in range(n):
+        result.add(i)
+    return result
+
+
+def ints_random_permutation(n: int) -> Ints:
+    result = ints_identity(n)
+    result.shuffle()
     return result

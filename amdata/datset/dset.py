@@ -1,3 +1,5 @@
+from __future__ import annotations
+import math
 import sys
 from typing import TextIO, List, Tuple, Iterator
 
@@ -12,8 +14,6 @@ import datset.amcsv as csv
 #     bool = 0
 #     float = 1
 #     categorical = 2
-import datset.dset
-
 
 class Colname:
     def __init__(self, s: str):
@@ -283,6 +283,9 @@ class Cats:
         for v in range(0, self.num_values()):
             yield v
 
+    def subset(self, indexes) -> Cats:
+        return cats_create(self.m_row_to_value.subset(indexes), self.m_value_to_valname)
+
 
 def cats_create(row_to_value: arr.Ints, vns: Valnames) -> Cats:
     return Cats(row_to_value, vns)
@@ -469,6 +472,10 @@ class Column:
     def is_bools(self):
         return False
 
+    def subset(self, row_indexes: arr.Ints) -> Column:
+        bas.my_error(f'{self} base')
+        return column_default()
+
 
 class NamedColumn:
     def __init__(self, cn: Colname, col: Column):
@@ -514,6 +521,12 @@ class NamedColumn:
 
     def bools(self) -> arr.Bools:
         return self.column().bools()
+
+    def is_floats(self) -> bool:
+        return self.column().is_floats()
+
+    def subset(self, row_indexes: arr.Ints) -> NamedColumn:
+        return named_column_create(self.colname(), self.column().subset(row_indexes))
 
 
 class Colnames:
@@ -702,7 +715,6 @@ class Datset:
 
     def subcols(self, *strs: str):  # returns Datset
         cns = colnames_from_list_of_strings(*strs)
-        print(f'colnames = {cns.pretty_string()}')
         cis, ok = self.colids_from_colnames(cns)
         assert ok
         return self.subcols_from_ints(cis)
@@ -777,7 +789,7 @@ class Datset:
         for nc in self.range_named_columns():
             yield nc.column()
 
-    def subset(self, *colnames_as_strings: str):  # returns Datset
+    def subset(self, *colnames_as_strings: str) -> Datset:
         result = datset_empty(self.num_rows())
         for s in colnames_as_strings:
             nc = self.named_column_from_string(s)
@@ -796,7 +808,36 @@ class Datset:
         for nc in self.range_named_columns():
             result.add(nc)
         result.add(new_nc)
-        assert isinstance(result,Datset)
+        assert isinstance(result, Datset)
+        return result
+
+    def without(self, ignore):  # ignore type is Datset and returns Datset
+        assert isinstance(ignore, Datset)
+        result = datset_empty(self.num_rows())
+        for nc in self.range_named_columns():
+            if not ignore.contains_colname(nc.colname()):
+                result.add(nc)
+        assert isinstance(result, Datset)
+        return result
+
+    def split(self, fraction_in_train: float) -> Tuple[Datset, Datset]:
+        assert self.num_rows() > 1
+        n_in_train = math.floor(self.num_rows() * fraction_in_train)
+        if n_in_train < 1:
+            n_in_train = 1
+        elif n_in_train == self.num_rows():
+            n_in_train = self.num_rows() - 1
+
+        indexes = arr.ints_random_permutation(self.num_rows())
+        train_rows = indexes.first_n_elements(n_in_train).sort()
+        test_rows = indexes.last_n_elements(self.num_rows() - n_in_train).sort()
+
+        return self.subset_rows(train_rows), self.subset_rows(test_rows)
+
+    def subset_rows(self, row_indexes: arr.Ints) -> Datset:
+        result = datset_empty(row_indexes.len())
+        for nc in self.range_named_columns():
+            result.add(nc.subset(row_indexes))
         return result
 
 
@@ -903,9 +944,9 @@ def test_string():
     s = """date,hour,person,weight,is_late\n
         4/22/22, 12, ann, 200,f\n
         4/22/22, 14, bob robertson, 170,f\n
-        4/22/22, 14.5, jan, 180,t\n
+        4/22/22, 14.5, ann, 180,f\n
         4/22/22, 17, jan, 130,t\n
-        4/22/22, 19, ann, 130,f\n"""
+        4/22/22, 19, jan, 130,t\n"""
     return s
 
 
@@ -987,10 +1028,8 @@ class Datid:
         result = ""
         for chunk in response.iter_content(chunk_size=1024):
             s = bas.string_from_bytes(chunk)
-            print(f'chunk = [{s}]')
             result = result + s
 
-        print(f'result = [{result}]')
         return result, True
 
     def strings_load_result_using_url(self) -> StringsLoadResult:
@@ -1057,6 +1096,9 @@ class ColumnBool(Column):
     def bools(self) -> arr.Bools:
         return self.m_bools
 
+    def subset(self, indexes: arr.Ints) -> ColumnBool:
+        return ColumnBool(self.bools().subset(indexes))
+
 
 def column_from_bools(bs: arr.Bools) -> Column:
     return ColumnBool(bs)
@@ -1108,6 +1150,9 @@ class ColumnFloats(Column):
     def is_floats(self) -> bool:
         return True
 
+    def subset(self, indexes: arr.Ints) -> Column:
+        return ColumnFloats(self.floats().subset(indexes))
+
 
 def column_from_floats(fs: arr.Floats) -> Column:
     return ColumnFloats(fs)
@@ -1139,6 +1184,9 @@ class ColumnCats(Column):
 
     def is_cats(self) -> bool:
         return True
+
+    def subset(self, indexes: arr.Ints) -> ColumnCats:
+        return ColumnCats(self.cats().subset(indexes))
 
 
 def column_from_cats(cs: Cats) -> Column:
@@ -1179,15 +1227,11 @@ def datset_from_string(datid_as_string: str) -> Tuple[Datset, bas.Errmess]:
 
 
 def load(datid_as_string: str) -> Datset:
-    print(f'datid_as_string = {datid_as_string}')
     ds, em = datset_from_string(datid_as_string)
-
-    print(f'em = {em.string()}')
 
     if em.is_error():
         sys.exit(em.string())
 
-    print(f'ds =\n{ds.pretty_string()}')
     return ds
 
 
@@ -1241,3 +1285,80 @@ def unit_test():
 def smat_from_multiline_string(s: str) -> Tuple[arr.Smat, bas.Errmess]:
     ss = arr.strings_from_lines_in_string(s)
     return csv.smat_from_strings(ss)
+
+
+def column_from_row(r: Row) -> Column:
+    assert r.len() > 0
+    a0 = r.atom(0)
+    if isinstance(a0, AtomBool):
+        fs = arr.bools_empty()
+        for a in r.range():
+            assert isinstance(a, AtomBool)
+            fs.add(a.bool())
+        return column_from_bools(fs)
+    elif isinstance(a0, AtomFloat):
+        fs = arr.floats_empty()
+        for a in r.range():
+            assert isinstance(a, AtomFloat)
+            fs.add(a.float())
+        return column_from_floats(fs)
+    elif isinstance(a0, AtomCategorical):
+        bas.my_error('not implemented (and will be a pain because need to ensure value consistency')
+    else:
+        bas.my_error('Bad column type')
+
+
+class RowsArray:
+    def __init__(self, li: list[Row]):
+        self.m_list = li
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_list, list)
+        for r in self.m_list:
+            assert isinstance(r, Row)
+            r.assert_ok()
+
+    def add(self, r: Row):
+        self.m_list.append(r)
+
+    def len(self) -> int:
+        return len(self.m_list)
+
+    def row(self, i: int) -> Row:
+        assert 0 <= i < self.len()
+        return self.m_list[i]
+
+    def column(self, c: int) -> Column:
+        return column_from_row(self.column_of_atoms(c))
+
+    def column_of_atoms(self, c: int) -> Row:  # using 'Row' of Atoms to represent a column. Sorry.
+        result = row_empty()
+        for r in self.range():
+            result.add(r.atom(c))
+        return result
+
+    def range(self) -> Iterator[Row]:
+        for r in self.m_list:
+            yield r
+
+
+def rows_array_empty() -> RowsArray:
+    return RowsArray([])
+
+
+def colnames_from_strings(ss: arr.Strings) -> Colnames:
+    return colnames_from_list_of_strings(*ss.list())
+
+
+def named_column_from_floats(cn: Colname, fs: arr.Floats) -> NamedColumn:
+    return named_column_create(cn, column_from_floats(fs))
+
+
+def datset_from_fmat(cns: Colnames, fm: arr.Fmat) -> Datset:
+    assert cns.len() == fm.num_cols()
+    assert isinstance(fm, arr.Fmat)
+    result = datset_empty(fm.num_rows())
+    for cn, fs in zip(cns.range(), fm.range_columns()):
+        result.add(named_column_from_floats(cn, fs))
+    return result

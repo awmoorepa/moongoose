@@ -1,4 +1,5 @@
 import math
+import random
 from typing import Tuple
 
 
@@ -295,6 +296,9 @@ class Interval:
         assert isinstance(other, Interval)
         return loosely_lte(self.lo(), other.lo()) and loosely_lte(other.hi(), self.hi())
 
+    def extremes(self) -> Tuple[float, float]:
+        return self.lo(), self.hi()
+
 
 def interval_create(lo: float, hi: float) -> Interval:
     return Interval(lo, hi)
@@ -380,3 +384,9 @@ expensive_assertions = True
 
 def interval_unit() -> Interval:
     return interval_create(0.0, 1.0)
+
+
+def int_random(n: int) -> int:
+    assert isinstance(n, int)
+    assert n > 0
+    return random.randrange(n)

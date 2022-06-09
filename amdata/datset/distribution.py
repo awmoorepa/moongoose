@@ -63,6 +63,9 @@ class Multinomial:
     def floats(self) -> arr.Floats:
         return self.m_probs
 
+    def len(self) -> int:
+        return self.floats().len()
+
 
 class Distribution:
     def __init__(self, dt: Distype, data):
@@ -117,6 +120,30 @@ class Distribution:
         assert isinstance(self.m_any, Multinomial)
         return self.m_any
 
+    def mean(self) -> float:
+        dt = self.distype()
+        if dt == Distype.binomial:
+            return self.binomial().theta()
+        elif dt == Distype.gaussian:
+            return self.gaussian().mean()
+        elif dt == Distype.multinomial:
+            bas.my_error("can't ask for mean as a scalar for multinomial")
+        else:
+            bas.my_error("bad distype")
+
+    def as_floats(self) -> arr.Floats:
+        dt = self.distype()
+        if dt == Distype.binomial:
+            return arr.floats_singleton(self.binomial().theta())
+        elif dt == Distype.gaussian:
+            result = arr.floats_singleton(self.gaussian().mean())
+            result.add(self.gaussian().sdev())
+            return result
+        elif dt == Distype.multinomial:
+            return self.multinomial().floats()
+        else:
+            bas.my_error("bad distype")
+
 
 def distribution_from_gaussian(g: Gaussian) -> Distribution:
     return Distribution(Distype.gaussian, g)
@@ -140,3 +167,11 @@ def distribution_from_multinomial(mn: Multinomial) -> Distribution:
 
 def multinomial_create(probs: arr.Floats) -> Multinomial:
     return Multinomial(probs)
+
+
+def multinomial_from_binomial(bi: Binomial) -> Multinomial:
+    p1 = bi.theta()
+    p0 = 1 - p1
+    probs = arr.floats_singleton(p0)
+    probs.add(p1)
+    return multinomial_create(probs)
