@@ -1,15 +1,45 @@
-import enum
-import datset.ambasic as bas
+from __future__ import annotations
+
+from abc import abstractmethod, ABC
+
 import datset.amarrays as arr
+import datset.ambasic as bas
 
 
-class Distype(enum.Enum):
-    gaussian = 0
-    binomial = 1
-    multinomial = 2
+def binomial_default() -> Binomial:
+    return binomial_create(0.0)
 
 
-class Gaussian:
+def gaussian_default() -> Gaussian:
+    return gaussian_create(0.0, 1.0)
+
+
+def multinomial_default():
+    return multinomial_create(arr.floats_all_constant(4, 0.25))
+
+
+class Distribution(ABC):
+
+    @abstractmethod
+    def assert_ok(self):
+        pass
+
+    def explain(self):
+        print(self.pretty_string())
+
+    @abstractmethod
+    def pretty_string(self) -> str:
+        pass
+
+    @abstractmethod
+    def as_floats(self) -> arr.Floats:
+        pass
+
+
+class Gaussian(Distribution):
+    def as_floats(self) -> arr.Floats:
+        return arr.floats_varargs(self.mean(), self.sdev())
+
     def __init__(self, mu: float, sdev: float):
         self.m_mean = mu
         self.m_sdev = sdev
@@ -30,7 +60,10 @@ class Gaussian:
         return self.m_sdev
 
 
-class Binomial:
+class Binomial(Distribution):
+    def as_floats(self) -> arr.Floats:
+        return arr.floats_singleton(self.theta())
+
     def __init__(self, theta: float):
         self.m_theta = theta
         self.assert_ok()
@@ -46,7 +79,10 @@ class Binomial:
         return self.m_theta
 
 
-class Multinomial:
+class Multinomial(Distribution):
+    def as_floats(self) -> arr.Floats:
+        return self.floats()
+
     def __init__(self, probs: arr.Floats):
         self.m_probs = probs
         self.assert_ok()
@@ -67,102 +103,12 @@ class Multinomial:
         return self.floats().len()
 
 
-class Distribution:
-    def __init__(self, dt: Distype, data):
-        self.m_distype = dt
-        self.m_any = data
-        self.assert_ok()
-
-    def assert_ok(self):
-        assert isinstance(self.m_distype, Distype)
-        dt = self.distype()
-        if dt == Distype.gaussian:
-            assert isinstance(self.m_any, Gaussian)
-            self.m_any.assert_ok()
-        elif dt == Distype.binomial:
-            assert isinstance(self.m_any, Binomial)
-            self.m_any.assert_ok()
-        elif dt == Distype.multinomial:
-            assert isinstance(self.m_any, Multinomial)
-            self.m_any.assert_ok()
-        else:
-            bas.my_error("bad distype")
-
-    def distype(self) -> Distype:
-        return self.m_distype
-
-    def explain(self):
-        print(self.pretty_string())
-
-    def pretty_string(self) -> str:
-        dt = self.distype()
-        if dt == Distype.binomial:
-            return self.binomial().pretty_string()
-        elif dt == Distype.gaussian:
-            return self.gaussian().pretty_string()
-        elif dt == Distype.multinomial:
-            return self.multinomial().pretty_string()
-        else:
-            bas.my_error("bad distype")
-
-    def binomial(self) -> Binomial:
-        assert self.distype() == Distype.binomial
-        assert isinstance(self.m_any, Binomial)
-        return self.m_any
-
-    def gaussian(self) -> Gaussian:
-        assert self.distype() == Distype.gaussian
-        assert isinstance(self.m_any, Gaussian)
-        return self.m_any
-
-    def multinomial(self) -> Multinomial:
-        assert self.distype() == Distype.multinomial
-        assert isinstance(self.m_any, Multinomial)
-        return self.m_any
-
-    def mean(self) -> float:
-        dt = self.distype()
-        if dt == Distype.binomial:
-            return self.binomial().theta()
-        elif dt == Distype.gaussian:
-            return self.gaussian().mean()
-        elif dt == Distype.multinomial:
-            bas.my_error("can't ask for mean as a scalar for multinomial")
-        else:
-            bas.my_error("bad distype")
-
-    def as_floats(self) -> arr.Floats:
-        dt = self.distype()
-        if dt == Distype.binomial:
-            return arr.floats_singleton(self.binomial().theta())
-        elif dt == Distype.gaussian:
-            result = arr.floats_singleton(self.gaussian().mean())
-            result.add(self.gaussian().sdev())
-            return result
-        elif dt == Distype.multinomial:
-            return self.multinomial().floats()
-        else:
-            bas.my_error("bad distype")
-
-
-def distribution_from_gaussian(g: Gaussian) -> Distribution:
-    return Distribution(Distype.gaussian, g)
-
-
-def distribution_from_binomial(bn: Binomial) -> Distribution:
-    return Distribution(Distype.binomial, bn)
-
-
 def binomial_create(p: float) -> Binomial:
     return Binomial(p)
 
 
 def gaussian_create(mu: float, sdev: float) -> Gaussian:
     return Gaussian(mu, sdev)
-
-
-def distribution_from_multinomial(mn: Multinomial) -> Distribution:
-    return Distribution(Distype.multinomial, mn)
 
 
 def multinomial_create(probs: arr.Floats) -> Multinomial:

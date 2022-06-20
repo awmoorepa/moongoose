@@ -114,7 +114,7 @@ class Floats:
     def increment(self, i: int, delta: float):
         self.set(i, self.float(i) + delta)
 
-    def dot_product(self, other) -> float:  # other is type Floats
+    def dot_product(self, other: Floats) -> float:
         assert isinstance(other, Floats)
         assert self.len() == other.len()
         result = 0.0
@@ -123,7 +123,7 @@ class Floats:
 
         return result
 
-    def minus(self, other):  # other is type Floats and result is type Floats
+    def minus(self, other: Floats) -> Floats:
         assert isinstance(other, Floats)
         assert self.len() == other.len()
         result = floats_empty()
@@ -136,14 +136,14 @@ class Floats:
         assert isinstance(ss, Strings)
         return ss.concatenate_fancy('{', ',', '}')
 
-    def strings(self):  # returns Strings
+    def strings(self) -> Strings:
         result = strings_empty()
         for x in self.range():
             result.add(bas.string_from_float(x))
         assert isinstance(result, Strings)
         return result
 
-    def deep_copy(self):  # returns Floats
+    def deep_copy(self) -> Floats:  # returns Floats
         result = floats_empty()
         for x in self.range():
             result.add(x)
@@ -152,8 +152,7 @@ class Floats:
     def squared(self) -> float:
         return self.dot_product(self)
 
-    def append(self, others):  # others are of type floats
-        assert isinstance(others, Floats)
+    def append(self, others: Floats):  # others are of type floats
         for x in others.range():
             self.add(x)
 
@@ -198,15 +197,10 @@ class Floats:
 
         return extreme_index
 
-    def add_many(self, other):  # other type is also floats
-        assert isinstance(other, Floats)
-        for f in other.range():
-            self.add(f)
-
     def tidy_extremes(self) -> Tuple[float, float]:
         return self.interval().extremes()
 
-    def plus(self, other):  # returns type Floats. other type is floats
+    def plus(self, other: Floats) -> Floats:
         assert isinstance(other, Floats)
         result = floats_empty()
         for a, b in zip(self.range(), other.range()):
@@ -219,6 +213,22 @@ class Floats:
         for i in indexes.range():
             result.add(self.float(i))
         return result
+
+    def indexes_of_sorted(self) -> Ints:
+        return indexes_of_sorted(self.m_floats)
+
+    def without_leftmost_element(self) -> Floats:
+        return self.without_n_leftmost_elements(1)
+
+    def without_n_leftmost_elements(self, n: int) -> Floats:
+        assert n <= self.len()
+        result = floats_empty()
+        for i in range(n, self.len()):
+            result.add(self.float(i))
+        return result
+
+    def sum_squares(self) -> float:
+        return self.dot_product(self)
 
 
 class Namer:
@@ -494,6 +504,9 @@ class Ints:
         for i in range(self.len() - n_in_result - 1, self.len()):
             result.add(self.int(i))
         return result
+
+    def sum(self) -> int:
+        return sum(self.m_ints)
 
 
 def indexes_of_sorted(li: list) -> Ints:
@@ -1217,6 +1230,9 @@ class Fmat:
     def pretty_string(self) -> str:
         return self.pretty_strings().concatenate_fancy('', '\n', '')
 
+    def range_cols(self) -> Iterator[Floats]:
+        return self.m_col_to_row_to_value.range_rows()
+
 
 def fmat_create(rif: RowIndexedFmat) -> Fmat:
     return Fmat(rif)
@@ -1584,3 +1600,35 @@ def ints_random_permutation(n: int) -> Ints:
     result = ints_identity(n)
     result.shuffle()
     return result
+
+
+def fmat_from_floats_array(fa: FloatsArray) -> Fmat:
+    assert fa.len() > 0
+
+    rif = row_indexed_fmat_with_no_rows(fa.floats(0).len())
+    for fs in fa.range():
+        rif.add_row(fs)
+
+    return fmat_create(rif)
+
+
+def floats_varargs(*li: float) -> Floats:
+    assert isinstance(li, tuple)
+    result = floats_empty()
+    for x in li:
+        assert isinstance(x, float)
+        result.add(x)
+    return result
+
+
+def strings_varargs(*li: str) -> Strings:
+    assert isinstance(li, tuple)
+    result = strings_empty()
+    for x in li:
+        assert isinstance(x, str)
+        result.add(x)
+    return result
+
+
+def fmat_of_zeroes(n_rows: int, n_columns: int) -> Fmat:
+    return fmat_create(row_indexed_fmat_of_zeroes(n_rows, n_columns))

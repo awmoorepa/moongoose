@@ -1,6 +1,10 @@
 from __future__ import annotations
+
+import enum
 import math
 import sys
+from abc import ABC, abstractmethod
+
 from typing import TextIO, List, Tuple, Iterator
 
 import requests
@@ -47,6 +51,38 @@ class Valname:
     def equals(self, other) -> bool:  # other is type Valname
         assert isinstance(other, Valname)
         return self.string() == other.string()
+
+
+class Coltype(enum.Enum):
+    bools = 0
+    floats = 1
+    cats = 2
+
+
+class Coldescribe:
+    def __init__(self, cn: Colname, ct: Coltype, vns: Valnames):
+        self.m_colname = cn
+        self.m_coltype = ct
+        self.m_valnames = vns
+        self.assert_ok()
+
+    def coltype(self) -> Coltype:
+        return self.m_coltype
+
+    def valnames(self) -> Valnames:
+        assert self.coltype() == Coltype.cats
+        return self.m_valnames
+
+    def assert_ok(self):
+        assert isinstance(self.m_colname, Colname)
+        self.m_colname.assert_ok()
+        assert isinstance(self.m_coltype, Coltype)
+        assert isinstance(self.m_valnames, Valnames)
+        self.m_valnames.assert_ok()
+        assert (self.m_valnames.len() == 0) == (self.m_coltype != Coltype.cats)
+
+    def colname(self) -> Colname:
+        return self.m_colname
 
 
 def valname_default() -> Valname:
@@ -416,52 +452,43 @@ def cats_default() -> Cats:
     return cats_create(arr.ints_empty(), valnames_empty())
 
 
-class Column:
+class Column(ABC):
     def assert_ok(self):
         bas.my_error(f'{self} base class')
 
+    @abstractmethod
     def num_rows(self) -> int:
-        bas.my_error(f'{self} base class')
-        return -77
+        pass
 
     # def coltype(self) -> Coltype:
     #     bas.my_error(f'{self} base class')
     #     return Coltype.bool
 
+    @abstractmethod
     def atom(self, r: int) -> Atom:
-        bas.my_error(f'{self} {r} base')
-        return atom_from_bool(False)
+        pass
 
     def floats(self) -> arr.Floats:
-        bas.my_error(f'{self} base')
-        return arr.floats_empty()
+        if isinstance(self, ColumnFloats):
+            return self.floats()
+        else:
+            bas.my_error('You called the floats method on a Column not implemented by ColumnFloats')
 
     def cats(self) -> Cats:
-        bas.my_error(f'{self} base')
-        return cats_default()
+        if isinstance(self, ColumnCats):
+            return self.cats()
+        else:
+            bas.my_error('You called the cats method on a Column not implemented by ColumnCats')
 
     def bools(self) -> arr.Bools:
-        bas.my_error(f'{self} base')
-        return arr.bools_empty()
+        if isinstance(self, ColumnBool):
+            return self.bools()
+        else:
+            bas.my_error('You called the bools method on a Column not implemented by ColumnFloats')
 
-    def valnames(self) -> Valnames:
-        bas.my_error(f'{self} base')
-        return valnames_empty()
-
-    def valname(self, r: int) -> Valname:
-        bas.my_error(f'{self} {r} base')
-        return valname_default()
-
-    def float(self, r: int) -> float:
-        bas.my_error(f'{self} {r} base')
-        return -7e77
-
-    def bool(self, r: int) -> bool:
-        bas.my_error(f'{self} {r} base')
-        return False
-
+    @abstractmethod
     def range(self):
-        bas.my_error(f'{self} base')
+        pass
 
     def is_floats(self) -> bool:
         return False  # overridden in ColumnFloats subclass
@@ -472,9 +499,20 @@ class Column:
     def is_bools(self):
         return False
 
+    @abstractmethod
     def subset(self, row_indexes: arr.Ints) -> Column:
-        bas.my_error(f'{self} base')
-        return column_default()
+        pass
+
+    @abstractmethod
+    def coldescribe(self, cn: Colname) -> Coldescribe:
+        pass
+
+    def type_as_string(self) -> str:
+        return self.coltype().string()
+
+    @abstractmethod
+    def coltype(self):
+        pass
 
 
 class NamedColumn:
@@ -511,7 +549,7 @@ class NamedColumn:
         return self.column().cats()
 
     def valnames(self) -> Valnames:
-        return self.column().valnames()
+        return self.cats().valnames()
 
     def is_cats(self) -> bool:
         return self.column().is_cats()
@@ -527,6 +565,12 @@ class NamedColumn:
 
     def subset(self, row_indexes: arr.Ints) -> NamedColumn:
         return named_column_create(self.colname(), self.column().subset(row_indexes))
+
+    def coldescribe(self):
+        return self.column().coldescribe(self.colname())
+
+    def coltype(self) -> Coltype:
+        return self.column().coltype()
 
 
 class Colnames:
@@ -640,20 +684,30 @@ def row_empty() -> Row:
     return Row([])
 
 
+def datset_from_single_named_column(nc: NamedColumn) -> Datset:
+    result = datset_empty(nc.num_rows())
+    result.add(nc)
+    return result
+
+
+def datset_from_single_column(cn: Colname, co: Column) -> Datset:
+    return datset_from_single_named_column(named_column_create(cn, co))
+
+
 class Datset:
     def __init__(self, n_rows: int, ncs: List[NamedColumn]):  # n_rows must == col length
         self.m_num_rows = n_rows
         self.m_named_columns = ncs
         self.assert_ok()
 
-    def valname(self, r: int, c: int) -> Valname:
-        return self.column(c).valname(r)
+    def valname_from_row(self, r: int, c: int) -> Valname:
+        return self.cats(c).valname_from_row(r)
 
     def float(self, r: int, c: int) -> float:
-        return self.column(c).float(r)
+        return self.floats(c).float(r)
 
     def bool(self, r: int, c: int) -> bool:
-        return self.column(c).bool(r)
+        return self.bools(c).bool(r)
 
     def assert_ok(self):
         for nc in self.m_named_columns:
@@ -838,6 +892,29 @@ class Datset:
         result = datset_empty(row_indexes.len())
         for nc in self.range_named_columns():
             result.add(nc.subset(row_indexes))
+        return result
+
+    def cats(self, c: int) -> Cats:
+        return self.column(c).cats()
+
+    def bools(self, c: int) -> arr.Bools:
+        return self.column(c).bools()
+
+    def discretize(self, colname_as_string: str, n_buckets: int) -> Datset:
+        assert self.num_cols() == 1
+        co = self.column(0)
+        assert isinstance(co, ColumnFloats)
+        return datset_from_single_column(colname_from_string(colname_as_string), co.discretize(n_buckets))
+
+    def appended_with(self, other: Datset) -> Datset:
+        assert self.num_rows() == other.num_rows()
+        result = datset_empty(self.num_rows())
+        for nc in self.range_named_columns():
+            result.add(nc)
+        for nc in other.range_named_columns():
+            if self.contains_colname(nc.colname()):
+                bas.my_error(f"Can't append two datasets which share a column name ({nc.colname().string()})")
+            result.add(nc)
         return result
 
 
@@ -1068,7 +1145,21 @@ def colname_create(s: str) -> Colname:
     return Colname(s)
 
 
+def coldescribe_create(cn: Colname, ct: Coltype, vns: Valnames) -> Coldescribe:
+    return Coldescribe(cn, ct, vns)
+
+
+def coldescribe_of_type_bools(cn: Colname) -> Coldescribe:
+    return coldescribe_create(cn, Coltype.bools, valnames_empty())
+
+
 class ColumnBool(Column):
+    def coltype(self) -> Coltype:
+        return Coltype.bools
+
+    def coldescribe(self, cn: Colname) -> Coldescribe:
+        return coldescribe_of_type_bools(cn)
+
     def __init__(self, bs: arr.Bools):
         self.m_bools = bs
         self.assert_ok()
@@ -1124,7 +1215,61 @@ def column_from_strings(ss: arr.Strings) -> Column:
     return column_from_cats(cats_from_strings(ss))
 
 
+def coldescribe_of_type_floats(cn: Colname) -> Coldescribe:
+    return coldescribe_create(cn, Coltype.floats, valnames_empty())
+
+
+def cats_from_discretized_floats(fs: arr.Floats, n_buckets: int) -> Cats:
+    rank_to_index = fs.indexes_of_sorted()
+    n_elements = fs.len()
+    elements_per_bucket_lo = math.floor(n_elements / n_buckets)
+    remaining = n_elements - elements_per_bucket_lo * n_buckets
+    assert 0 <= remaining < n_buckets
+    bucket_number_to_len = arr.ints_empty()
+    for bucket_number in range(0, remaining):
+        bucket_number_to_len.add(elements_per_bucket_lo + 1)
+    for bucket_number in range(remaining, n_buckets):
+        bucket_number_to_len.add(elements_per_bucket_lo)
+
+    assert bucket_number_to_len.len() == n_buckets
+    assert bucket_number_to_len.min() == elements_per_bucket_lo
+    assert bucket_number_to_len.max() <= elements_per_bucket_lo + 1
+    assert bucket_number_to_len.sum() == n_elements
+
+    rank_to_bucket_number = arr.ints_empty()
+    bucket_number = 0
+    index_within_bucket = 0
+    for rank in range(n_elements):
+        rank_to_bucket_number.add(bucket_number)
+        index_within_bucket += 1
+        if index_within_bucket >= bucket_number_to_len.int(bucket_number):
+            index_within_bucket = 0
+            bucket_number += 1
+
+    assert bucket_number == n_buckets
+    assert index_within_bucket == 0
+
+    index_to_rank = rank_to_index.invert_index()
+    index_to_bucket_number = arr.ints_empty()
+
+    for rank in index_to_rank.range():
+        bucket_number = rank_to_bucket_number.int(rank)
+        index_to_bucket_number.add(bucket_number)
+
+    vns = valnames_empty()
+    for bucket_number in range(n_buckets):
+        vns.add(valname_from_string(f'segment{bucket_number}'))
+
+    return cats_create(index_to_bucket_number, vns)
+
+
 class ColumnFloats(Column):
+    def coltype(self) -> Coltype:
+        return Coltype.floats
+
+    def coldescribe(self, cn: Colname) -> Coldescribe:
+        return coldescribe_of_type_floats(cn)
+
     def __init__(self, fs: arr.Floats):
         self.m_floats = fs
 
@@ -1153,12 +1298,26 @@ class ColumnFloats(Column):
     def subset(self, indexes: arr.Ints) -> Column:
         return ColumnFloats(self.floats().subset(indexes))
 
+    def discretize(self, n_buckets) -> ColumnCats:
+        cs = cats_from_discretized_floats(self.floats(), n_buckets)
+        return column_from_cats(cs)
+
 
 def column_from_floats(fs: arr.Floats) -> Column:
     return ColumnFloats(fs)
 
 
+def coldescribe_of_type_cats(cn: Colname, vns: Valnames) -> Coldescribe:
+    return coldescribe_create(cn, Coltype.cats, vns)
+
+
 class ColumnCats(Column):
+    def coltype(self):
+        return Coltype.cats
+
+    def coldescribe(self, cn: Colname) -> Coldescribe:
+        return coldescribe_of_type_cats(cn, self.cats().valnames())
+
     def __init__(self, cs: Cats):
         self.m_cats = cs
 
@@ -1189,7 +1348,7 @@ class ColumnCats(Column):
         return ColumnCats(self.cats().subset(indexes))
 
 
-def column_from_cats(cs: Cats) -> Column:
+def column_from_cats(cs: Cats) -> ColumnCats:
     return ColumnCats(cs)
 
 
@@ -1275,8 +1434,8 @@ def unit_test():
     print(f'em = {em.string()}')
     print(f'ds = \n{ds.pretty_string()}')
 
-    assert ds.valname(1, 0).string() == '4/22/22'
-    assert ds.valname(1, 2).string() == 'bob robertson'
+    assert ds.valname_from_row(1, 0).string() == '4/22/22'
+    assert ds.valname_from_row(1, 2).string() == 'bob robertson'
     assert not ds.bool(2, 3)
     assert ds.num_rows() == 5
     assert ds.num_cols() == 4
@@ -1362,3 +1521,16 @@ def datset_from_fmat(cns: Colnames, fm: arr.Fmat) -> Datset:
     for cn, fs in zip(cns.range(), fm.range_columns()):
         result.add(named_column_from_floats(cn, fs))
     return result
+
+
+def row_singleton(a: Atom) -> Row:
+    result = row_empty()
+    result.add(a)
+    return result
+
+
+def row_from_floats(fs: arr.Floats) -> Row:
+    r = row_empty()
+    for f in fs.range():
+        r.add(atom_from_float(f))
+    return r

@@ -10,6 +10,7 @@ import datset.dset as dat
 import datset.numset as num
 import datset.learn as lea
 import datset.plot as plo
+import datset.linear as lin
 
 
 def unit_tests():
@@ -35,11 +36,12 @@ def run():
     # num.noomset_from_datset(a).explain()
 
     print('\n**********************\n\n')
-    output = a.subset('energy')
+    output = a.subset('kjoules')
     assert isinstance(output, dat.Datset)
-    inputs = a.without(output).without(a.subset('name', 'date'))
+    #    inputs = a.without(output).without(a.subset('name', 'date'))
+    inputs = a.subset('ascent')
     assert isinstance(inputs, dat.Datset)
-    mod = lea.learner_type_multinomial().train(inputs, output)
+    mod = lin.learner_type_glm(dat.Coltype.floats).train(inputs, output)
     assert isinstance(mod, lea.Model)
     mod.explain()
 
@@ -47,12 +49,12 @@ def run():
         rw = inputs.row(i)
         assert isinstance(rw, dat.Row)
         print(f'predict {output.colname(0).string()} for this row: {rw.string()}')
-        mod.predict(rw).explain()
+        mod.predict_from_row(rw).explain()
 
     b_inputs = a.subset('ascent')
-    b_output = a.subset('energy')
+    b_output = a.subset('kjoules')
     assert isinstance(b_output, dat.Datset)
-    mod = lea.learner_type_multinomial().train(b_inputs, b_output)
+    mod = lea.learner_type_linear().train(b_inputs, b_output)
     assert isinstance(mod, lea.Model)
     plo.show_model(mod, b_inputs, b_output)
 
@@ -63,13 +65,13 @@ def run():
     c_train_in = c_train.subset('ascent')
     c_train_out = c_train.subset('energy')
     c_test_in = c_test.subset('ascent')
-    c_test_out = c_test.subset('energy')
 
     mod = lea.learner_type_multinomial().train(c_train_in, c_train_out)
     assert isinstance(mod, lea.Model)
 
-    d = mod.batch_predict(c_test)
+    d = mod.batch_predict(c_test_in)
     d.explain()
+
 
 #    plo.show_model(mod, c_test_in, c_test_out)
 

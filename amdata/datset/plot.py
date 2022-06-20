@@ -4,9 +4,11 @@ import matplotlib.pyplot as plt
 
 import datset.dset as dat
 import datset.amarrays as arr
+import datset.geometry as geo
 import datset.ambasic as bas
 import datset.numset as noo
 import datset.learn as lea
+import datset.distribution as dis
 
 
 def datset_encoding(ds: dat.Datset) -> str:
@@ -264,6 +266,49 @@ def show_ffc(x: Floatvec, y: Floatvec, z: Catvec):
     plt.show()
 
 
+def linear_combination(colos: geo.Colors, fs: arr.Floats) -> geo.Color:
+    result = geo.black()
+    for colo, f in zip(colos.range(), fs.range()):
+        result = result.plus(colo.times(f))
+    return result
+
+
+def show_model_ffc(mod: lea.Model, x: Floatvec, y: Floatvec, z: Catvec):
+    fig, ax = plt.subplots()
+    z_to_row_to_x = z.floats_array(x)
+    z_to_row_to_y = z.floats_array(y)
+    colos = geo.color_cycle(z.num_values())
+    print('not a dupe')
+    for xs, ys, label, colo in zip(z_to_row_to_x.range(), z_to_row_to_y.range(), z.names(), colos.range()):
+        ax.scatter(xs.list(), ys.list(), label=label, c=[colo.list()])
+
+    xlo, xhi = ax.xaxis.get_data_interval()
+    ylo, yhi = ax.yaxis.get_data_interval()
+
+    assert z.num_values() == 3
+    n_cells_per_edge = 30
+    row_to_col_to_rgb = []
+    for row in range(n_cells_per_edge):
+        y_coord = yhi - (yhi - ylo) * (row + 0.5) / n_cells_per_edge
+        col_to_rgb = []
+        for col in range(n_cells_per_edge):
+            x_coord = xlo + (xhi - xlo) * (col + 0.5) / n_cells_per_edge
+            model_inputs = dat.row_from_floats(arr.floats_varargs(x_coord, y_coord))
+            model_output = mod.predict_from_row(model_inputs)
+            assert isinstance(model_output, dis.Multinomial)
+            rgb = linear_combination(colos, model_output.floats())
+            col_to_rgb.append(rgb.list())
+        row_to_col_to_rgb.append(col_to_rgb)
+
+    ax.imshow(row_to_col_to_rgb, alpha=0.2, extent=(xlo, xhi, ylo, yhi), aspect='auto', interpolation='bilinear')
+
+    print('still not a dupe')
+    ax.set_xlabel(x.label())
+    ax.set_ylabel(y.label())
+    ax.legend()
+    plt.show()
+
+
 def show(ds: dat.Datset):
     en = datset_encoding(ds)
     if en == "c":
@@ -302,15 +347,19 @@ def transformers_encoding(tfs: noo.Transformers) -> str:
     return result
 
 
-def learner_encoding(le: lea.Learner) -> str:
-    if le.learn_type() == lea.Learntype.linear:
+def coldescribe_encoding(cd: dat.Coldescribe) -> str:
+    if cd.coltype() == dat.Coltype.floats:
         return 'f'
     else:
         return 'c'
 
 
+def modnames_encoding(mn: lea.Modnames) -> str:
+    return transformers_encoding(mn.input_transformers()) + coldescribe_encoding(mn.output_describe())
+
+
 def model_encoding(mod: lea.Model) -> str:
-    return transformers_encoding(mod.transformers()) + learner_encoding(mod.learner())
+    return modnames_encoding(mod.modnames())
 
 
 def fvc_from_named_column(nc: dat.NamedColumn) -> Floatvec:
@@ -326,7 +375,13 @@ def show_model_ff(mod: lea.Model, x: Floatvec, y: Floatvec):
     print(f'lo={lo}, hi={hi}')
     xs = arr.floats_from_range(lo, hi, 101)
     print(f'xs = {xs.pretty_string()}')
-    ys = mod.predict_linear(xs)
+    ys = arr.floats_empty()
+    for x in xs.range():
+        d = mod.predict_from_row(dat.row_singleton(dat.atom_from_float(x)))
+        assert isinstance(d, dis.Gaussian)
+        y = d.mean()
+        ys.add(y)
+
     ax.plot(xs.list(), ys.list())
     plt.show()
 
@@ -341,11 +396,71 @@ def show_model_fc(mod: lea.Model, x: Floatvec, y: Catvec):
 
     lo, hi = x.tidy_extremes()
     xs = arr.floats_from_range(lo, hi, 101)
-    value_to_ys = mod.predict_multinomial_from_floats(xs)
-    for ys, label in zip(value_to_ys.range_rows(), y.names()):
-        ax_top.plot(xs.list(), ys.list(), label=label)
+
+    value_to_row_to_prob = arr.floats_array_of_empties(y.num_values())
+
+    for x in xs.range():
+        d = mod.predict_from_row(dat.row_singleton(dat.atom_from_float(x)))
+        assert isinstance(d, dis.Multinomial)
+        value_to_prob = d.floats()
+        for prob, row_to_prob in zip(value_to_prob.range(), value_to_row_to_prob.range()):
+            row_to_prob.add(prob)
+
+    for row_to_prob, label in zip(value_to_row_to_prob.range(), y.names()):
+        assert isinstance(xs, arr.Floats)
+        assert isinstance(row_to_prob, arr.Floats)
+        assert xs.len() == row_to_prob.len()
+        ax_top.plot(xs.list(), row_to_prob.list(), label=label)
+
     ax_top.set_ylabel(f'P({y.label()})')
     ax_bottom.legend()
+    plt.show()
+
+
+def compute_x_to_y_to_prob(input_valnames: dat.Valnames, mod: lea.Model) -> arr.Fmat:
+    tfs = mod.transformers()
+    assert tfs.len() == 1
+    ctf = tfs.transformer(0)
+    assert isinstance(ctf, noo.CatTransformer)
+
+    x_to_y_to_prob = arr.floats_array_empty()
+
+    for vn in input_valnames.range():
+        a = dat.atom_from_valname(vn)
+        mu = mod.predict_from_row(dat.row_singleton(a))
+        assert isinstance(mu, dis.Multinomial)
+        x_to_y_to_prob.add(mu.floats())
+
+    return arr.fmat_from_floats_array(x_to_y_to_prob)
+
+
+def show_model_cc(mod: lea.Model, x: Catvec, y: Catvec):
+    fig, (ax_top, ax_bottom) = plt.subplots(2)
+
+    im = x.frequencies_with(y)
+    bottom_labels = x.names()
+
+    bottom_heights = arr.ints_all_zero(x.num_values())
+
+    for co, na in zip(im.range_columns(), y.names()):
+        ax_bottom.bar(bottom_labels, co.list(), label=na, bottom=bottom_heights.list())
+        bottom_heights = bottom_heights.plus(co)
+        assert isinstance(bottom_heights, arr.Ints)
+
+    ax_bottom.set_xlabel(x.label())
+    ax_bottom.set_ylabel(f'frequency({y.label()})')
+    ax_bottom.legend()
+
+    bottom_heights = arr.floats_all_zero(x.num_values())
+    fm = compute_x_to_y_to_prob(x.valnames(), mod)
+    for y_value in range(y.num_values()):
+        heights = fm.column(y_value)
+        ax_top.bar(bottom_labels, heights.list(), label=y.valnames().valname(y_value).string(),
+                   bottom=bottom_heights.list())
+        bottom_heights = bottom_heights.plus(heights)
+
+    ax_top.set_ylabel(f'P({y.label()}|{x.label()})')
+    ax_top.legend()
     plt.show()
 
 
@@ -362,5 +477,9 @@ def show_model(mod: lea.Model, inputs: dat.Datset, output: dat.Datset):
         show_model_ff(mod, fvc(inputs, 0), fvc(output, 0))
     elif ds_encoding == 'fc':
         show_model_fc(mod, fvc(inputs, 0), cvc(output, 0))
+    elif ds_encoding == 'cc':
+        show_model_cc(mod, cvc(inputs, 0), cvc(output, 0))
+    elif ds_encoding == 'ffc':
+        show_model_ffc(mod, fvc(inputs, 0), fvc(inputs, 1), cvc(output, 0))
     else:
         print(f"Sorry, I can't plot data and model with these characteristics: {ds_encoding}")

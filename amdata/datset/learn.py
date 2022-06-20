@@ -1,19 +1,33 @@
-import enum
-import math
+from __future__ import annotations
 
+import math
+from abc import ABC, abstractmethod
 from typing import Iterator
 
-import datset.ambasic as bas
 import datset.amarrays as arr
+import datset.ambasic as bas
+import datset.distribution as dis
 import datset.dset as dat
 import datset.numset as noo
-import datset.distribution as dis
 
 
-class Learntype(enum.Enum):
-    logistic = 0
-    linear = 1
-    multinomial = 2
+class Learner(ABC):
+    @abstractmethod
+    def assert_ok(self):
+        pass
+
+    @abstractmethod
+    def train_from_named_column(self, inputs: dat.Datset, output: dat.NamedColumn) -> Model:
+        pass
+
+    @abstractmethod
+    def name_as_string(self) -> str:
+        pass
+
+    def train(self, inputs: dat.Datset, output: dat.Datset) -> Model:
+        assert output.num_cols() == 1
+        assert output.num_rows() == inputs.num_rows()
+        return self.train_from_named_column(inputs, output.named_column(0))
 
     def loglike(self, beta_xs: arr.Floats, output: dat.Column) -> float:
         result = 0.0
@@ -22,50 +36,149 @@ class Learntype(enum.Enum):
 
         return result
 
+    @abstractmethod
+    def loglike_derivative_from_row(self, ws: Weights, x_k: noo.Termvec, y_k: dat.Atom, j: int) -> float:
+        pass
+
+    @abstractmethod
     def loglike_of_element(self, beta_x: float, y: dat.Atom) -> float:
-        if self == Learntype.linear:
-            delta = y.float() - beta_x
-            return -0.5 * delta * delta - bas.log_root_two_pi
-        elif self == Learntype.logistic:
-            q = q_from_y(y)
-            q_beta_x = q * beta_x
-            ek_of_minus_beta = math.exp(q_beta_x)  # negative of negative is positive
-            fk_of_minus_beta = 1 + ek_of_minus_beta
-            return -math.log(fk_of_minus_beta)
-        else:
-            bas.my_error("bad learn type for loglike")
+        pass
+
+    @abstractmethod
+    def loglike_second_derivative_from_row(self, ws: Weights, x_k: noo.Termvec, y_k: dat.Atom, j: int) -> float:
+        pass
 
 
-class Learner:
-    def __init__(self, lt: Learntype):
-        self.m_learn_type = lt
-        self.assert_ok()
-
+class LearnerLinear(Learner):
     def assert_ok(self):
-        assert isinstance(self.m_learn_type, Learntype)
+        assert isinstance(self.m_name, str)
 
-    def learn_type(self) -> Learntype:
-        return self.m_learn_type
+    def train_from_named_column(self, inputs: dat.Datset, output: dat.NamedColumn) -> Model:
+        return train_linear_model(inputs, output)
 
-    def train(self, inputs: dat.Datset, output: dat.Datset):  # Returns Model
-        assert output.num_cols() == 1
-        assert output.num_rows() == inputs.num_rows()
+    def name_as_string(self) -> str:
+        return self.m_name
 
-        nc = output.named_column(0)
-        lt = self.learn_type()
-        if lt == Learntype.linear:
-            return train_linear(inputs, nc)
-        elif lt == Learntype.logistic:
-            return train_logistic(inputs, nc)
-        elif lt == Learntype.multinomial:
-            return train_multinomial(inputs, nc)
+    def loglike_second_derivative_from_row(self, ws: Weights, x_k: noo.Termvec, y_k: dat.Atom, j: int) -> float:
+        x_kj = x_k.float(j)
+        return -x_kj * x_kj
 
-        else:
-            bas.my_error("bad LearnType")
+    def __init__(self):
+        self.m_name = 'linear'
+
+    def loglike_of_element(self, beta_x: float, y: dat.Atom) -> float:
+        delta = y.float() - beta_x
+        return -0.5 * delta * delta - bas.log_root_two_pi
+
+    def loglike_derivative_from_row(self, ws: Weights, x_k: noo.Termvec, y_k: dat.Atom, j: int) -> float:
+        return x_k.float(j) * (y_k.float() - ws.times(x_k))
 
 
-def learner_create(lt: Learntype) -> Learner:
-    return Learner(lt)
+class LearnerLogistic(Learner):
+    def assert_ok(self):
+        assert isinstance(self.m_name, str)
+
+    def train_from_named_column(self, inputs: dat.Datset, output: dat.NamedColumn) -> ModelLogistic:
+        return train_logistic_model(inputs, output)
+
+    def name_as_string(self) -> str:
+        return self.m_name
+
+    def loglike_second_derivative_from_row(self, ws: Weights, x_k: noo.Termvec, y_k: dat.Atom, j: int) -> float:
+        qk = q_from_y(y_k)  # note the qks get multiplied out so not really needed
+        beta_x = ws.times(x_k)
+        q_beta_x = qk * beta_x
+        ek_of_beta = math.exp(-q_beta_x)
+        ek_of_minus_beta = 1 / ek_of_beta
+        fk_of_beta = 1 + ek_of_beta
+        fk_of_minus_beta = 1 + ek_of_minus_beta
+        x_kj = x_k.float(j)
+        return -x_kj * x_kj / (fk_of_beta * fk_of_minus_beta)
+
+    def __init__(self):
+        self.m_name = 'logistic'
+
+    def loglike_of_element(self, beta_x: float, y: dat.Atom) -> float:
+        q = q_from_y(y)
+        q_beta_x = q * beta_x
+        ek_of_minus_beta = math.exp(q_beta_x)  # negative of negative is positive
+        fk_of_minus_beta = 1 + ek_of_minus_beta
+        return -math.log(fk_of_minus_beta)
+
+    def loglike_derivative_from_row(self, ws: Weights, x_k: noo.Termvec, y_k: dat.Atom, j: int) -> float:
+        q_k = q_from_y(y_k)
+        beta_x = ws.times(x_k)
+        q_beta_x = q_k * beta_x
+        ek_of_beta = math.exp(-q_beta_x)
+        fk_of_beta = 1 + ek_of_beta
+        return -q_k * x_k.float(j) / fk_of_beta
+
+
+class LearnerMultinomial(Learner):
+    def assert_ok(self):
+        assert isinstance(self.m_name, str)
+
+    def train_from_named_column(self, inputs: dat.Datset, output: dat.NamedColumn) -> Model:
+        return train_multinomial_model(inputs, output)
+
+    def name_as_string(self) -> str:
+        return self.m_name
+
+    def loglike_derivative_from_row(self, ws: Weights, x_k: noo.Termvec, y_k: dat.Atom, j: int) -> float:
+        bas.my_error("not needed")
+        return -7e77
+
+    def loglike_of_element(self, beta_x: float, y: dat.Atom) -> float:
+        bas.my_error("not needed")
+        return -7e77
+
+    def loglike_second_derivative_from_row(self, ws: Weights, x_k: noo.Termvec, y_k: dat.Atom, j: int) -> float:
+        bas.my_error("not needed")
+        return -7e77
+
+    def __init__(self):
+        self.m_name = 'multinomial'
+
+
+class Model(ABC):
+
+    @abstractmethod
+    def assert_ok(self):
+        pass
+
+    def explain(self):
+        print(self.pretty_string())
+
+    @abstractmethod
+    def pretty_string(self) -> str:
+        pass
+
+    @abstractmethod
+    def predict_from_row(self, row: dat.Row) -> dis.Distribution:
+        pass
+
+    def transformers(self) -> noo.Transformers:
+        return self.modnames().input_transformers()
+
+    def batch_predict(self, inputs: dat.Datset) -> dat.Datset:
+        cns = self.prediction_colnames()
+        rfm = arr.row_indexed_fmat_with_no_rows(cns.len())
+        for r in inputs.range_rows():
+            di = self.predict_from_row(r)
+            rfm.add_row(di.as_floats())
+        fm = arr.fmat_create(rfm)
+        return dat.datset_from_fmat(cns, fm)
+
+    def prediction_colnames(self) -> dat.Colnames:
+        return dat.colnames_from_strings(self.prediction_component_strings())
+
+    @abstractmethod
+    def prediction_component_strings(self) -> arr.Strings:
+        pass
+
+    @abstractmethod
+    def modnames(self) -> Modnames:
+        pass
 
 
 def q_from_y(y_k: dat.Atom) -> float:
@@ -92,20 +205,20 @@ class Weights:
         assert isinstance(self.m_weights, arr.Floats)
         self.m_weights.assert_ok()
 
-    def loglike(self, inputs: arr.Fmat, output: dat.Column, lt: Learntype) -> float:
+    def loglike(self, le: Learner, inputs: noo.Termvecs, output: dat.Column) -> float:
         beta_xs = self.premultiplied_by(inputs)
-        return lt.loglike(beta_xs, output) - self.penalty()
+        return le.loglike(beta_xs, output) - self.penalty()
 
-    def loglike_derivative(self, inputs: arr.Fmat, output: dat.Column, lt: Learntype, col: int) -> float:
+    def loglike_derivative(self, le: Learner, inputs: noo.Termvecs, output: dat.Column, col: int) -> float:
         result = 0.0
-        for x_k, y_k in zip(inputs.range_rows(), output.range()):
-            result += self.loglike_derivative_from_row(x_k, y_k, lt, col)
+        for x_k, y_k in zip(inputs.range(), output.range()):
+            result += self.loglike_derivative_from_row(le, x_k, y_k, col)
         return result - self.penalty_derivative(col)
 
-    def loglike_second_derivative(self, inputs: arr.Fmat, output: dat.Column, lt: Learntype, col: int) -> float:
+    def loglike_second_derivative(self, le: Learner, inputs: noo.Termvecs, output: dat.Column, col: int) -> float:
         result = 0.0
-        for x_k, y_k in zip(inputs.range_rows(), output.range()):
-            result += self.loglike_second_derivative_from_row(x_k, y_k, lt, col)
+        for x_k, y_k in zip(inputs.range(), output.range()):
+            result += self.loglike_second_derivative_from_row(le, x_k, y_k, col)
         return result - ws_penalty_second_derivative()
 
     def increment(self, col: int, delta: float):
@@ -114,62 +227,39 @@ class Weights:
     def floats(self) -> arr.Floats:
         return self.m_weights
 
-    def loglike_derivative_from_row(self, x_k: arr.Floats, y_k: dat.Atom, lt: Learntype, j: int) -> float:
-        if lt == Learntype.linear:
-            return x_k.float(j) * (y_k.float() - self.times(x_k))
-        elif lt == Learntype.logistic:
-            q_k = q_from_y(y_k)
-            beta_x = self.times(x_k)
-            q_beta_x = q_k * beta_x
-            ek_of_beta = math.exp(-q_beta_x)
-            fk_of_beta = 1 + ek_of_beta
-            return -q_k * x_k.float(j) / fk_of_beta
-        else:
-            bas.my_error("bad LearnType for loglike")
+    def loglike_derivative_from_row(self, le: Learner, x_k: noo.Termvec, y_k: dat.Atom, j: int) -> float:
+        return le.loglike_derivative_from_row(self, x_k, y_k, j)
 
-    def loglike_second_derivative_from_row(self, x_k: arr.Floats, y_k: dat.Atom, lt: Learntype, j: int) -> float:
-        if lt == Learntype.linear:
-            x_kj = x_k.float(j)
-            return -x_kj * x_kj
-        elif lt == Learntype.logistic:
-            qk = q_from_y(y_k)  # note the qks get multiplied out so not really needed
-            beta_x = self.times(x_k)
-            q_beta_x = qk * beta_x
-            ek_of_beta = math.exp(-q_beta_x)
-            ek_of_minus_beta = 1 / ek_of_beta
-            fk_of_beta = 1 + ek_of_beta
-            fk_of_minus_beta = 1 + ek_of_minus_beta
-            x_kj = x_k.float(j)
-            return -x_kj * x_kj / (fk_of_beta * fk_of_minus_beta)
-        else:
-            bas.my_error("bad learn type for log like")
+    def loglike_second_derivative_from_row(self, le: Learner, x_k: noo.Termvec, y_k: dat.Atom, j: int) -> float:
+        return le.loglike_second_derivative_from_row(self, x_k, y_k, j)
 
-    def times(self, x_k: arr.Floats) -> float:
-        return self.floats().dot_product(x_k)
+    def times(self, x_k: noo.Termvec) -> float:
+        return self.floats().dot_product(x_k.floats())
 
-    def pretty_strings_with_introduction(self, nns: noo.Noomnames, intro: str) -> arr.Strings:
-        assert self.num_cols_in_z_matrix() == nns.len() + 1
+    def pretty_strings_with_introduction(self, tfs: noo.Transformers, intro: str) -> arr.Strings:
         result = arr.strings_singleton(intro)
         result.add('')
         result.add('where...')
         result.add('')
-        result.append(self.pretty_strings(nns))
+        result.append(self.pretty_strings(tfs))
         return result
 
-    def pretty_string_with_introduction(self, nns: noo.Noomnames, intro: str) -> str:
-        return self.pretty_strings_with_introduction(nns, intro).concatenate_fancy('', '\n', '')
+    def pretty_string_with_introduction(self, tfs: noo.Transformers, intro: str) -> str:
+        return self.pretty_strings_with_introduction(tfs, intro).concatenate_fancy('', '\n', '')
 
     def num_cols_in_z_matrix(self) -> int:
         return self.floats().len()
 
-    def pretty_strings(self, nns: noo.Noomnames) -> arr.Strings:
-        return self.strings_array(nns).pretty_strings()
+    def pretty_strings(self, tfs: noo.Transformers) -> arr.Strings:
+        return self.strings_array(tfs).pretty_strings()
 
-    def strings_array(self, nns: noo.Noomnames) -> arr.StringsArray:
+    def strings_array(self, tfs: noo.Transformers) -> arr.StringsArray:
+        nns = tfs.noomnames()
         assert self.num_cols_in_z_matrix() == nns.len() + 1
         result = arr.strings_array_empty()
+        cws = self.correct_accounting_for_transformers(tfs)
         nns_as_strings = arr.strings_singleton('constant').with_many(nns.strings())
-        for nn_as_string, w in zip(nns_as_strings.range(), self.range()):
+        for nn_as_string, w in zip(nns_as_strings.range(), cws.range()):
             ss = arr.strings_empty()
             ss.add(f'w[{nn_as_string}]')
             ss.add('=')
@@ -180,8 +270,8 @@ class Weights:
     def weight(self, i: int) -> float:
         return self.floats().float(i)
 
-    def premultiplied_by(self, fm: arr.Fmat) -> arr.Floats:
-        return fm.times(self.floats())
+    def premultiplied_by(self, tvs: noo.Termvecs) -> arr.Floats:
+        return tvs.times(self.floats())
 
     def deep_copy(self):  # returns WeightsArray
         fs = self.floats().deep_copy()
@@ -195,36 +285,69 @@ class Weights:
         return penalty_parameter * 2 * self.weight(col)
 
     def sum_squares(self) -> float:
-        return self.times(self.floats())
+        return self.floats().sum_squares()
 
     def range(self) -> Iterator[float]:
         return self.m_weights.range()
 
+    def correct_accounting_for_transformers(self, tfs: noo.Transformers) -> Weights:
+        # predict = c_old + sum_j wold_j * (x_j - lo_j)/width_j
+        #
+        # predict = c_new + sum_j w_new_j x_j
+        #
+        # c_new = c_old + sum_j wold_j (-lo_j) / width_j
+        # w_new_j = wold_j/width_j
+        c_old = self.weight(0)
+        c_new = c_old
+        j_to_lo = arr.floats_empty()
+        j_to_width = arr.floats_empty()
+
+        for tf in tfs.range():
+            for iv in tf.scaling_intervals().range():
+                j_to_lo.add(iv.lo())
+                j_to_width.add(iv.width())
+
+        j_to_wold = self.floats().without_leftmost_element()
+        j_to_w_new = arr.floats_empty()
+
+        for wold, lo, width in zip(j_to_wold.range(), j_to_lo.range(), j_to_width.range()):
+            j_to_w_new.add(wold / width)
+            c_new -= wold * lo / width
+
+        result = arr.floats_singleton(c_new)
+        result.append(j_to_w_new)
+
+        assert result.len() == self.num_cols_in_z_matrix()
+
+        return weights_create(result)
+
 
 class Modnames:
-    def __init__(self, tfs: noo.Transformers, output: dat.Colname):
-        self.m_transformers = tfs
-        self.m_output_colname = output
+    def __init__(self, tfs: noo.Transformers, output: dat.Coldescribe):
+        self.m_input_transformers = tfs
+        self.m_output_describe = output
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_transformers, noo.Transformers)
-        self.m_transformers.assert_ok()
-        assert isinstance(self.m_output_colname, dat.Colname)
-        self.m_output_colname.assert_ok()
-        assert not self.noomnames().contains(noo.noomname_from_colname(self.output_colname()))
+        assert isinstance(self.m_input_transformers, noo.Transformers)
+        self.m_input_transformers.assert_ok()
+        assert isinstance(self.m_output_describe, dat.Coldescribe)
+        self.m_output_describe.assert_ok()
 
-    def transformers(self) -> noo.Transformers:
-        return self.m_transformers
+    def input_transformers(self) -> noo.Transformers:
+        return self.m_input_transformers
 
-    def noomnames(self) -> noo.Noomnames:
-        return self.transformers().noomnames()
+    def input_noomnames(self) -> noo.Noomnames:
+        return self.input_transformers().noomnames()
 
-    def output_colname(self) -> dat.Colname:
-        return self.m_output_colname
+    def output_describe(self) -> dat.Coldescribe:
+        return self.m_output_describe
+
+    def termvec_from_row(self, row: dat.Row) -> noo.Termvec:
+        return self.input_transformers().termvec_from_row(row)
 
 
-class ModelLogistic:
+class ModelLogistic(Model):
     def __init__(self, ms: Modnames, ws: Weights):
         self.m_modnames = ms
         self.m_weights = ws
@@ -238,8 +361,8 @@ class ModelLogistic:
 
     def pretty_string(self) -> str:
         ms = self.modnames()
-        intro = f'P({ms.output_colname().string()}|x) = sigmoid(w^T x)'
-        return self.weights().pretty_string_with_introduction(ms.noomnames(), intro)
+        intro = f'P({ms.output_describe().colname().string()}|x) = sigmoid(w^T x)'
+        return self.weights().pretty_string_with_introduction(ms.input_transformers(), intro)
 
     def weights(self) -> Weights:
         return self.m_weights
@@ -247,30 +370,19 @@ class ModelLogistic:
     def modnames(self) -> Modnames:
         return self.m_modnames
 
-    def predict_from_z(self, z: arr.Floats) -> dis.Binomial:
-        ez = math.exp(self.weights().times(z))
+    def predict_from_termvec(self, tv: noo.Termvec) -> dis.Binomial:
+        ez = math.exp(self.weights().times(tv))
         p = ez / (1 + ez)
         return dis.binomial_create(p)
 
-    def predict(self, row: dat.Row) -> dis.Binomial:
-        tfs = self.transformers()
-        z = tfs.transform_row(row)
-        return self.predict_from_z(z)
-
-    def transformers(self) -> noo.Transformers:
-        return self.modnames().transformers()
-
-    def predict_from_float(self, x):
-        assert self.transformers().len() == 1
-        z = arr.floats_singleton(1.0)
-        z.add_many(self.transformers().transformer(0).transform_float(x))
-        return self.predict_from_z(z)
+    def predict_from_row(self, row: dat.Row) -> dis.Binomial:
+        return self.predict_from_termvec(self.transformers().termvec_from_row(row))
 
     def prediction_component_strings(self) -> arr.Strings:
-        return arr.strings_singleton(f'prob_{self.modnames().output_colname().string()}')
+        return arr.strings_singleton(f'prob_{self.modnames().output_describe().colname().string()}')
 
 
-class ModelLinear:
+class ModelLinear(Model):
     def __init__(self, mns: Modnames, ws: Weights, sdev: float):
         self.m_modnames = mns
         self.m_weights = ws
@@ -289,8 +401,8 @@ class ModelLinear:
         return self.pretty_strings(self.modnames()).concatenate_fancy('', '\n', '')
 
     def pretty_strings(self, ms: Modnames) -> arr.Strings:
-        intro = f'p({ms.output_colname().string()}|x) ~ Normal(mu = w^T x)'
-        return self.weights().pretty_strings_with_introduction(ms.noomnames(), intro)
+        intro = f'p({ms.output_describe().colname().string()}|x) ~ Normal(mu = w^T x)'
+        return self.weights().pretty_strings_with_introduction(ms.input_transformers(), intro)
 
     def weights(self) -> Weights:
         return self.m_weights
@@ -298,33 +410,19 @@ class ModelLinear:
     def modnames(self) -> Modnames:
         return self.m_modnames
 
-    def predict_from_z(self, z: arr.Floats) -> dis.Gaussian:
-        assert self.weights().num_cols_in_z_matrix() == z.len()
-        mu = self.weights().times(z)
+    def predict_from_termvec(self, tv: noo.Termvec) -> dis.Gaussian:
+        assert self.weights().num_cols_in_z_matrix() == tv.num_terms()
+        mu = self.weights().times(tv)
         return dis.gaussian_create(mu, self.sdev())
 
     def predict_from_row(self, row: dat.Row) -> dis.Gaussian:
-        tfs = self.transformers()
-        z = tfs.transform_row(row)
-
-        return self.predict_from_z(z)
-
-    def predict_from_float(self, x: float) -> dis.Gaussian:
-        assert self.transformers().len() == 1
-        tf = self.transformers().transformer(0)
-        assert tf.is_float()
-        z = arr.floats_singleton(1.0)
-        z.add_many(tf.transform_float(x))
-        return self.predict_from_z(z)
-
-    def transformers(self) -> noo.Transformers:
-        return self.modnames().transformers()
+        return self.predict_from_termvec(self.transformers().termvec_from_row(row))
 
     def sdev(self) -> float:
         return self.m_sdev
 
     def prediction_component_strings(self):
-        result = arr.strings_singleton(self.modnames().output_colname().string())
+        result = arr.strings_singleton(self.modnames().output_describe().colname().string())
         result.add('sdev')
         return result
 
@@ -353,9 +451,9 @@ class WeightsArray:
         if len(self.m_value_to_weights) > 0:
             self.m_value_to_weights[0].equals(weights_zero(self.m_num_cols))
 
-    def loglike_k(self, x: arr.Fmat, y: arr.Ints, k: int) -> float:
+    def loglike_k(self, x: noo.Termvecs, y: arr.Ints, k: int) -> float:
         i = y.int(k)
-        z = x.row(k)
+        z = x.termvec(k)
         qki = self.qki(z, i)
         sk = self.sk(z)
         return qki - math.log(sk)
@@ -364,7 +462,7 @@ class WeightsArray:
         assert 0 <= val < self.num_values()
         return self.m_value_to_weights[val]
 
-    def loglike(self, x: arr.Fmat, y: arr.Ints) -> float:
+    def loglike(self, x: noo.Termvecs, y: arr.Ints) -> float:
         result = 0.0
         for k in range(x.num_rows()):
             result += self.loglike_k(x, y, k)
@@ -374,7 +472,7 @@ class WeightsArray:
         return self.pretty_strings(ms, vns).concatenate_fancy('', '\n', '')
 
     def pretty_strings(self, ms: Modnames, vns: dat.Valnames) -> arr.Strings:
-        headers = arr.strings_singleton('constant').with_many(ms.noomnames().strings())
+        headers = arr.strings_singleton('constant').with_many(ms.input_noomnames().strings())
         return self.fmat().pretty_strings_with_headings("", vns.strings(), headers)
 
     def row_indexed_fmat(self) -> arr.RowIndexedFmat:
@@ -389,7 +487,7 @@ class WeightsArray:
     def num_values(self) -> int:
         return len(self.m_value_to_weights)
 
-    def predict(self, z: arr.Floats) -> dis.Multinomial:
+    def predict(self, z: noo.Termvec) -> dis.Multinomial:
         sk = self.sk(z)
         probs = arr.floats_empty()
         for i in range(self.num_values()):
@@ -397,17 +495,17 @@ class WeightsArray:
             probs.add(eki / sk)
         return dis.multinomial_create(probs)
 
-    def eki(self, z: arr.Floats, i: int) -> float:
+    def eki(self, z: noo.Termvec, i: int) -> float:
         return math.exp(self.qki(z, i))
 
-    def qki(self, z: arr.Floats, i: int) -> float:
-        return self.weights(i).times(z)
+    def qki(self, tv: noo.Termvec, i: int) -> float:
+        return self.weights(i).times(tv)
 
     def increment(self, val: int, weight_index: int, delta: float):
         assert val > 0  # top row of weights must all be zero
         self.weights(val).increment(weight_index, delta)
 
-    def sk(self, z: arr.Floats) -> float:
+    def sk(self, z: noo.Termvec) -> float:
         result = 0
         for i in range(self.num_values()):
             result += self.eki(z, i)
@@ -456,18 +554,20 @@ def weights_array_zero(n_values: int, n_cols: int) -> WeightsArray:
     return result
 
 
-def multinomial_train_weights(x: arr.Fmat, y: arr.Ints) -> WeightsArray:
+def multinomial_train_weights(x: noo.Termvecs, y: arr.Ints) -> WeightsArray:
     assert x.num_rows() == y.len()
     n_values = y.max() + 1
-    n_cols = x.num_cols()
+    n_cols = x.num_terms()
     wsa = weights_array_zero(n_values, n_cols)
     start_ll = wsa.loglike(x, y)
     ll = start_ll
 
     iteration = 0
     while True:
+        if iteration == 0 or bas.is_power_of_two(iteration):
+            print(f'Begin iteration {iteration}')
         ll_old = ll
-        for j in range(x.num_cols()):
+        for j in range(x.num_terms()):
             for i in range(1, n_values):  # math would've redundancy which is solved by zeroing first row of weights
                 aaa = 0.0
                 bbb = 0.0
@@ -477,7 +577,7 @@ def multinomial_train_weights(x: arr.Fmat, y: arr.Ints) -> WeightsArray:
                     # eik = exp(Weights[i] . x_k)
                     u_to_euk = arr.floats_empty()
                     for ws in wsa.range():
-                        quk = ws.times(x.row(k))
+                        quk = ws.times(x.termvec(k))
                         euk = math.exp(quk)
                         u_to_euk.add(euk)
 
@@ -516,12 +616,13 @@ def multinomial_train_weights(x: arr.Fmat, y: arr.Ints) -> WeightsArray:
                     ll = ll_new2
 
         if math.fabs(ll - ll_old) / (1e-5 + math.fabs(ll - start_ll)) < 1e-4:
+            print(f'...finished after {iteration} iterations.')
             return wsa
 
         iteration += 1
 
 
-class ModelMultinomial:
+class ModelMultinomial(Model):
     def __init__(self, ms: Modnames, vns: dat.Valnames, b: WeightsArray):
         self.m_modnames = ms
         self.m_valnames = vns
@@ -536,12 +637,12 @@ class ModelMultinomial:
         assert isinstance(self.m_weights_array, WeightsArray)
         assert self.m_weights_array.num_values() == self.m_valnames.len()
         n_elements = self.m_weights_array.num_elements_in_each_weights_vector()
-        assert n_elements == self.m_modnames.transformers().noomnames().len() + 1
+        assert n_elements == self.m_modnames.input_transformers().noomnames().len() + 1
 
     def pretty_strings(self) -> arr.Strings:
         result = arr.strings_empty()
         ms = self.modnames()
-        result.add(f'P({ms.output_colname().string()}=v|Weights,x) = exp(Weights[v] . x) / K where...')
+        result.add(f'P({ms.output_describe().colname().string()}=v|Weights,x) = exp(Weights[v] . x) / K where...')
         result.append(self.weights_array().pretty_strings(self.modnames(), self.valnames()))
         return result
 
@@ -554,16 +655,11 @@ class ModelMultinomial:
     def modnames(self) -> Modnames:
         return self.m_modnames
 
-    def predict_from_z(self, z: arr.Floats) -> dis.Multinomial:
+    def predict_from_termvec(self, z: noo.Termvec) -> dis.Multinomial:
         return self.weights_array().predict(z)
 
     def predict_from_row(self, row: dat.Row) -> dis.Multinomial:
-        tfs = self.transformers()
-        z = tfs.transform_row(row)
-        return self.predict_from_z(z)
-
-    def transformers(self) -> noo.Transformers:
-        return self.modnames().transformers()
+        return self.predict_from_termvec(self.termvec_from_row(row))
 
     def num_values(self) -> int:
         return self.valnames().len()
@@ -577,22 +673,14 @@ class ModelMultinomial:
     def weights_array(self) -> WeightsArray:
         return self.m_weights_array
 
-    def z_from_float(self, x: float) -> arr.Floats:
-        assert self.transformers().len() == 1
-        tf = self.transformers().transformer(0)
-        assert tf.is_float()
-        z = arr.floats_singleton(1.0)
-        z.add_many(tf.transform_float(x))
-        return z
-
-    def predict_from_float(self, x: float) -> dis.Multinomial:
-        return self.predict_from_z(self.z_from_float(x))
-
     def prediction_component_strings(self) -> arr.Strings:
         result = arr.strings_empty()
         for vn in self.valnames().range():
             result.add(f'prob_{vn.string()}')
         return result
+
+    def termvec_from_row(self, row: dat.Row) -> noo.Termvec:
+        return self.transformers().termvec_from_row(row)
 
 
 def multinomial_model_create(ms: Modnames, vns: dat.Valnames, b: WeightsArray) -> ModelMultinomial:
@@ -602,162 +690,12 @@ def multinomial_model_create(ms: Modnames, vns: dat.Valnames, b: WeightsArray) -
 def train_multinomial_model(inputs: dat.Datset, output: dat.NamedColumn) -> ModelMultinomial:
     tfs = noo.transformers_from_datset(inputs)
     x = tfs.transform_datset(inputs)
+    assert isinstance(output.column(), dat.ColumnCats)
     cs = output.cats()
     y = cs.values()
-    ms = modnames_create(tfs, output.colname())
-    b = multinomial_train_weights(x.fmat(), y)
+    ms = modnames_create(tfs, output.coldescribe())
+    b = multinomial_train_weights(x.termvecs(), y)
     return multinomial_model_create(ms, cs.valnames(), b)
-
-
-class Model:
-    def __init__(self, le: Learner, data):
-        self.m_learner = le
-        self.m_data = data
-        self.assert_ok()
-
-    def assert_ok(self):
-        assert isinstance(self.m_learner, Learner)
-        self.m_learner.assert_ok()
-
-        lt = self.learntype()
-        if lt == Learntype.logistic:
-            assert isinstance(self.m_data, ModelLogistic)
-            self.m_data.assert_ok()
-        elif lt == Learntype.linear:
-            assert isinstance(self.m_data, ModelLinear)
-            self.m_data.assert_ok()
-        elif lt == Learntype.multinomial:
-            assert isinstance(self.m_data, ModelMultinomial)
-            self.m_data.assert_ok()
-        else:
-            bas.my_error('bad LearnType')
-
-    def learntype(self) -> Learntype:
-        return self.learner().learn_type()
-
-    def learner(self) -> Learner:
-        return self.m_learner
-
-    def explain(self):
-        print(f'Model = \n{self.pretty_string()}')
-
-    def pretty_string(self) -> str:
-        lt = self.learntype()
-        if lt == Learntype.linear:
-            return self.linear_model().pretty_string()
-        elif lt == Learntype.logistic:
-            return self.logistic_model().pretty_string()
-        elif lt == Learntype.multinomial:
-            return self.multinomial_model().pretty_string()
-        else:
-            bas.my_error("bad learn type")
-
-    def linear_model(self) -> ModelLinear:
-        assert self.learntype() == Learntype.linear
-        assert isinstance(self.m_data, ModelLinear)
-        return self.m_data
-
-    def logistic_model(self) -> ModelLogistic:
-        assert self.learntype() == Learntype.logistic
-        assert isinstance(self.m_data, ModelLogistic)
-        return self.m_data
-
-    def predict(self, row: dat.Row) -> dis.Distribution:
-        lt = self.learntype()
-        if lt == Learntype.linear:
-            return dis.distribution_from_gaussian(self.linear_model().predict_from_row(row))
-        elif lt == Learntype.logistic:
-            return dis.distribution_from_binomial(self.logistic_model().predict(row))
-        elif lt == Learntype.multinomial:
-            return dis.distribution_from_multinomial(self.multinomial_model().predict_from_row(row))
-        else:
-            bas.my_error('bad learntype')
-
-    def multinomial_model(self) -> ModelMultinomial:
-        assert self.learntype() == Learntype.multinomial
-        assert isinstance(self.m_data, ModelMultinomial)
-        return self.m_data
-
-    def transformers(self):
-        lt = self.learntype()
-        if lt == Learntype.linear:
-            return self.linear_model().transformers()
-        elif lt == Learntype.logistic:
-            return self.logistic_model().transformers()
-        elif lt == Learntype.multinomial:
-            return self.multinomial_model().transformers()
-        else:
-            bas.my_error('bad learntype')
-
-    def predict_linear(self, xs: arr.Floats) -> arr.Floats:
-        assert self.transformers().len() == 1
-        lt = self.learntype()
-        assert lt == Learntype.linear
-
-        result = arr.floats_empty()
-        for x in xs.range():
-            result.add(self.predict_linear_from_float(x).mean())
-
-        return result
-
-    def predict_linear_from_float(self, x: float) -> dis.Gaussian:
-        assert self.learntype() == Learntype.linear
-        return self.linear_model().predict_from_float(x)
-
-    def predict_multinomial_from_floats(self, xs: arr.Floats) -> arr.Fmat:
-        assert self.transformers().len() == 1
-        lt = self.learntype()
-        assert lt == Learntype.logistic or lt == Learntype.multinomial
-
-        result = arr.row_indexed_fmat_with_no_rows(self.num_multinomial_elements())
-
-        for x in xs.range():
-            mu = self.predict_multinomial_from_float(x)
-            assert mu.len() == self.num_multinomial_elements()
-            result.add_row(mu.floats())
-
-        return arr.fmat_create(result.transpose())
-
-    def predict_multinomial_from_float(self, x: float) -> dis.Multinomial:
-        if self.learntype() == Learntype.logistic:
-            bi = self.logistic_model().predict_from_float(x)
-            return dis.multinomial_from_binomial(bi)
-        elif self.learntype() == Learntype.multinomial:
-            return self.multinomial_model().predict_from_float(x)
-        else:
-            bas.my_error("Can't return Multinomial from this kind of model")
-
-    def num_multinomial_elements(self) -> int:
-        lt = self.learntype()
-        if lt == Learntype.logistic:
-            return 2
-        elif lt == Learntype.multinomial:
-            return self.multinomial_model().num_values()
-        else:
-            bas.my_error("This kind of model does not have multinomial elements")
-
-    def batch_predict(self, inputs: dat.Datset) -> dat.Datset:
-        cns = self.prediction_colnames()
-        rfm = arr.row_indexed_fmat_with_no_rows(cns.len())
-        for r in inputs.range_rows():
-            di = self.predict(r)
-            rfm.add_row(di.as_floats())
-        fm = arr.fmat_create(rfm)
-        return dat.datset_from_fmat(cns, fm)
-
-    def prediction_colnames(self) -> dat.Colnames:
-        return dat.colnames_from_strings(self.prediction_component_strings())
-
-    def prediction_component_strings(self):
-        lt = self.learntype()
-        if lt == Learntype.logistic:
-            return self.logistic_model().prediction_component_strings()
-        elif lt == Learntype.multinomial:
-            return self.multinomial_model().prediction_component_strings()
-        elif lt == Learntype.linear:
-            return self.linear_model().prediction_component_strings()
-        else:
-            bas.my_error("bad learn type")
 
 
 # Pr(Yi=1|x1i,...xMi) = 1/(1+b^{-beta.z}) where the sigmoid function has base b (for us b = e)
@@ -765,16 +703,9 @@ class Model:
 # ll = sum_k yk log(p(xk)) + sum_k (1-yk)log(1-p(xk))
 #
 
-def model_create(le: Learner, data) -> Model:
-    return Model(le, data)
 
-
-def learner_type_linear() -> Learner:
-    return learner_create(Learntype.linear)
-
-
-def model_type_linear(ml: ModelLinear) -> Model:
-    return model_create(learner_type_linear(), ml)
+def learner_type_linear() -> LearnerLinear:
+    return LearnerLinear()
 
 
 def linear_model_create(ms: Modnames, ws: Weights, sdev: float) -> ModelLinear:
@@ -789,19 +720,21 @@ def weights_zero(n_weights: int) -> Weights:
     return weights_create(arr.floats_all_zero(n_weights))
 
 
-def train_glm(inputs: arr.Fmat, output: dat.Column, lt: Learntype) -> Weights:
-    ws = weights_zero(inputs.num_cols())
-    start_ll = ws.loglike(inputs, output, lt)
+def train_glm(le: Learner, inputs: noo.Termvecs, output: dat.Column) -> Weights:
+    ws = weights_zero(inputs.num_terms())
+    start_ll = ws.loglike(le, inputs, output)
     ll = start_ll
 
     iteration = 0
     while True:
+        if iteration == 0 or bas.is_power_of_two(iteration):
+            print(f'Begin iteration {iteration}')
         ll_old = ll
-        for col in range(inputs.num_cols()):
-            aaa = ws.loglike(inputs, output, lt)
+        for col in range(inputs.num_terms()):
+            aaa = ws.loglike(le, inputs, output)
             assert bas.loosely_equals(aaa, ll)
-            bbb = ws.loglike_derivative(inputs, output, lt, col)
-            ccc = ws.loglike_second_derivative(inputs, output, lt, col)
+            bbb = ws.loglike_derivative(le, inputs, output, col)
+            ccc = ws.loglike_second_derivative(le, inputs, output, col)
 
             # ll = aaa + bbb * h + 0.5 * ccc * h^2
             # h_star = -bbb/ccc
@@ -810,27 +743,28 @@ def train_glm(inputs: arr.Fmat, output: dat.Column, lt: Learntype) -> Weights:
             ws2 = ws.deep_copy()
             assert isinstance(ws2, Weights)
             ws2.increment(col, h_star)
-            ll_new2 = ws2.loglike(inputs, output, lt)
+            ll_new2 = ws2.loglike(le, inputs, output)
             if ll_new2 > ll:
                 ws = ws2
                 ll = ll_new2
 
-        if math.fabs(ll - ll_old) / (math.fabs(ll - start_ll)) < 1e-6:
+        if math.fabs(ll - ll_old) / (math.fabs(ll - start_ll)) < 1e-5:
+            print(f'...finished after {iteration} iterations.')
             return ws
 
         iteration += 1
 
 
-def modnames_create(tfs: noo.Transformers, output: dat.Colname) -> Modnames:
+def modnames_create(tfs: noo.Transformers, output: dat.Coldescribe) -> Modnames:
     return Modnames(tfs, output)
 
 
 def train_linear_model(inputs: dat.Datset, output: dat.NamedColumn) -> ModelLinear:
     tfs = noo.transformers_from_datset(inputs)
     ns = tfs.transform_datset(inputs)
-    mns = modnames_create(tfs, output.colname())
-    ws = train_glm(ns.fmat(), output.column(), Learntype.linear)
-    predictions = ws.premultiplied_by(ns.fmat())
+    mns = modnames_create(tfs, output.coldescribe())
+    ws = train_glm(learner_type_linear(), ns.termvecs(), output.column())
+    predictions = ws.premultiplied_by(ns.termvecs())
     errors = predictions.minus(output.floats())
     assert isinstance(errors, arr.Floats)
     sse = errors.squared()
@@ -842,11 +776,6 @@ def train_linear_model(inputs: dat.Datset, output: dat.NamedColumn) -> ModelLine
     return linear_model_create(mns, ws, root_mse)
 
 
-def train_linear(inputs: dat.Datset, output: dat.NamedColumn) -> Model:
-    assert output.is_floats()
-    return model_type_linear(train_linear_model(inputs, output))
-
-
 def logistic_model_create(mns: Modnames, ws: Weights) -> ModelLogistic:
     return ModelLogistic(mns, ws)
 
@@ -855,29 +784,13 @@ def train_logistic_model(inputs: dat.Datset, output: dat.NamedColumn) -> ModelLo
     assert isinstance(output.column(), dat.ColumnBool)
     tfs = noo.transformers_from_datset(inputs)
     ns = tfs.transform_datset(inputs)
-    mns = modnames_create(tfs, output.colname())
-    return logistic_model_create(mns, train_glm(ns.fmat(), output.column(), Learntype.logistic))
+    mns = modnames_create(tfs, output.coldescribe())
+    return logistic_model_create(mns, train_glm(learner_type_logistic(), ns.termvecs(), output.column()))
 
 
-def model_type_logistic(ml: ModelLogistic) -> Model:
-    return model_create(learner_type_logistic(), ml)
+def learner_type_multinomial() -> LearnerMultinomial:
+    return LearnerMultinomial()
 
 
-def train_logistic(inputs: dat.Datset, output: dat.NamedColumn) -> Model:
-    return model_type_logistic(train_logistic_model(inputs, output))
-
-
-def model_type_multinomial(m: ModelMultinomial) -> Model:
-    return Model(learner_type_multinomial(), m)
-
-
-def train_multinomial(inputs: dat.Datset, output: dat.NamedColumn) -> Model:
-    return model_type_multinomial(train_multinomial_model(inputs, output))
-
-
-def learner_type_multinomial() -> Learner:
-    return learner_create(Learntype.multinomial)
-
-
-def learner_type_logistic() -> Learner:
-    return learner_create(Learntype.logistic)
+def learner_type_logistic() -> LearnerLogistic:
+    return LearnerLogistic()

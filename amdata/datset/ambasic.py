@@ -1,6 +1,7 @@
+from __future__ import annotations
 import math
 import random
-from typing import Tuple
+from typing import Tuple, List, Iterator
 
 
 def is_power_of_two(n: int) -> bool:
@@ -299,6 +300,9 @@ class Interval:
     def extremes(self) -> Tuple[float, float]:
         return self.lo(), self.hi()
 
+    def deep_copy(self) -> Interval:
+        return interval_create(self.lo(), self.hi())
+
 
 def interval_create(lo: float, hi: float) -> Interval:
     return Interval(lo, hi)
@@ -390,3 +394,50 @@ def int_random(n: int) -> int:
     assert isinstance(n, int)
     assert n > 0
     return random.randrange(n)
+
+
+class Intervals:
+    def __init__(self, li: List[Interval]):
+        self.m_list = li
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_list, list)
+        for iv in self.m_list:
+            assert isinstance(iv, Interval)
+            iv.assert_ok()
+
+    def range(self) -> Iterator[Interval]:
+        for iv in self.m_list:
+            yield iv
+
+    def add(self, iv: Interval):
+        self.m_list.append(iv)
+
+    def interval(self, i: int) -> Interval:
+        assert 0 <= i < self.len()
+        return self.m_list[i]
+
+    def len(self) -> int:
+        return len(self.m_list)
+
+
+def intervals_empty() -> Intervals:
+    return Intervals([])
+
+
+def intervals_all_constant(n: int, iv: Interval) -> Intervals:
+    result = intervals_empty()
+    for i in range(n):
+        result.add(iv.deep_copy())
+    return result
+
+
+def intervals_all_unit(n: int) -> Intervals:
+    return intervals_all_constant(n, interval_unit())
+
+
+def intervals_singleton(iv: Interval) -> Intervals:
+    result = intervals_empty()
+    result.add(iv)
+    return result
