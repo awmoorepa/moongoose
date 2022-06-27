@@ -36,25 +36,25 @@ def run():
     # num.noomset_from_datset(a).explain()
 
     print('\n**********************\n\n')
-    output = a.subset('kjoules')
+    output = a.subset('kjoules').binarize('is_high_energy')
     assert isinstance(output, dat.Datset)
     #    inputs = a.without(output).without(a.subset('name', 'date'))
     inputs = a.subset('ascent')
     assert isinstance(inputs, dat.Datset)
-    mod = lin.learner_type_glm(dat.Coltype.floats).train(inputs, output)
+    mod = lin.model_class_glm(dat.Coltype.bools).train(inputs, output)
     assert isinstance(mod, lea.Model)
     mod.explain()
 
-    for i in range(inputs.num_rows()):
-        rw = inputs.row(i)
-        assert isinstance(rw, dat.Row)
+    for i in range(inputs.num_records()):
+        rw = inputs.record(i)
+        assert isinstance(rw, dat.Record)
         print(f'predict {output.colname(0).string()} for this row: {rw.string()}')
-        mod.predict_from_row(rw).explain()
+        mod.predict_from_record(rw).explain()
 
     b_inputs = a.subset('ascent')
-    b_output = a.subset('kjoules')
+    b_output = a.subset('energy')
     assert isinstance(b_output, dat.Datset)
-    mod = lea.learner_type_linear().train(b_inputs, b_output)
+    mod = lin.model_class_glm(dat.Coltype.cats).train(b_inputs, b_output)
     assert isinstance(mod, lea.Model)
     plo.show_model(mod, b_inputs, b_output)
 
@@ -66,7 +66,7 @@ def run():
     c_train_out = c_train.subset('energy')
     c_test_in = c_test.subset('ascent')
 
-    mod = lea.learner_type_multinomial().train(c_train_in, c_train_out)
+    mod = lin.model_class_glm(dat.Coltype.cats).train(c_train_in, c_train_out)
     assert isinstance(mod, lea.Model)
 
     d = mod.batch_predict(c_test_in)

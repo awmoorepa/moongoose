@@ -19,6 +19,7 @@ import datset.amcsv as csv
 #     float = 1
 #     categorical = 2
 
+
 class Colname:
     def __init__(self, s: str):
         self.m_string = s
@@ -59,7 +60,7 @@ class Coltype(enum.Enum):
     cats = 2
 
 
-class Coldescribe:
+class ColumnDescription:
     def __init__(self, cn: Colname, ct: Coltype, vns: Valnames):
         self.m_colname = cn
         self.m_coltype = ct
@@ -481,7 +482,7 @@ class Column(ABC):
             bas.my_error('You called the cats method on a Column not implemented by ColumnCats')
 
     def bools(self) -> arr.Bools:
-        if isinstance(self, ColumnBool):
+        if isinstance(self, ColumnBools):
             return self.bools()
         else:
             bas.my_error('You called the bools method on a Column not implemented by ColumnFloats')
@@ -504,7 +505,7 @@ class Column(ABC):
         pass
 
     @abstractmethod
-    def coldescribe(self, cn: Colname) -> Coldescribe:
+    def coldescribe(self, cn: Colname) -> ColumnDescription:
         pass
 
     def type_as_string(self) -> str:
@@ -566,7 +567,7 @@ class NamedColumn:
     def subset(self, row_indexes: arr.Ints) -> NamedColumn:
         return named_column_create(self.colname(), self.column().subset(row_indexes))
 
-    def coldescribe(self):
+    def column_description(self):
         return self.column().coldescribe(self.colname())
 
     def coltype(self) -> Coltype:
@@ -645,7 +646,7 @@ def colnames_from_list_of_strings(*strs: str) -> Colnames:
     return result
 
 
-class Row:
+class Record:
     def __init__(self, la: List[Atom]):
         self.m_atoms = la
         self.assert_ok()
@@ -680,8 +681,8 @@ class Row:
             yield a
 
 
-def row_empty() -> Row:
-    return Row([])
+def record_empty() -> Record:
+    return Record([])
 
 
 def datset_from_single_named_column(nc: NamedColumn) -> Datset:
@@ -692,6 +693,10 @@ def datset_from_single_named_column(nc: NamedColumn) -> Datset:
 
 def datset_from_single_column(cn: Colname, co: Column) -> Datset:
     return datset_from_single_named_column(named_column_create(cn, co))
+
+
+def column_descriptions_empty() -> ColumnDescriptions:
+    return ColumnDescriptions([])
 
 
 class Datset:
@@ -725,7 +730,7 @@ class Datset:
 
     def pretty_strings(self) -> arr.Strings:
         if self.num_cols() == 0:
-            return arr.strings_singleton(f'datset with {self.num_rows()} row(s) and no columns')
+            return arr.strings_singleton(f'datset with {self.num_records()} row(s) and no columns')
         return self.strings_array().pretty_strings()
 
     def pretty_string(self) -> str:
@@ -734,12 +739,12 @@ class Datset:
     def strings_array(self) -> arr.StringsArray:
         result = arr.strings_array_empty()
         result.add(self.colnames().strings())
-        for ss in self.range_rows():
+        for ss in self.range_records():
             result.add(ss.strings())
 
         return result
 
-    def num_rows(self) -> int:
+    def num_records(self) -> int:
         return self.m_num_rows
 
     def num_cols(self) -> int:
@@ -762,7 +767,7 @@ class Datset:
         return self.named_column(c).colname()
 
     def subcols_from_ints(self, cs: arr.Ints):  # returns Datset
-        ds = datset_empty(self.num_rows())
+        ds = datset_empty(self.num_records())
         for c in cs.range():
             ds.add(self.named_column(c))
         return ds
@@ -788,14 +793,14 @@ class Datset:
 
     def add(self, nc: NamedColumn):
         if self.num_cols() > 0:
-            assert nc.num_rows() == self.num_rows()
+            assert nc.num_rows() == self.num_records()
 
         assert not self.contains_colname(nc.colname())
 
         self.m_named_columns.append(nc)
 
-    def row(self, r: int) -> Row:
-        result = row_empty()
+    def record(self, r: int) -> Record:
+        result = record_empty()
         for c in self.range_columns():
             result.add(c.atom(r))
         return result
@@ -825,15 +830,15 @@ class Datset:
         return self.without_colid(col)
 
     def without_colid(self, col: int):  # returns datset
-        result = datset_empty(self.num_rows())
+        result = datset_empty(self.num_records())
         for c in range(self.num_cols()):
             if not c == col:
                 result.add(self.named_column(c))
         return result
 
-    def range_rows(self) -> Iterator[Row]:
-        for r in range(self.num_rows()):
-            yield self.row(r)
+    def range_records(self) -> Iterator[Record]:
+        for r in range(self.num_records()):
+            yield self.record(r)
 
     def range_named_columns(self) -> Iterator[NamedColumn]:
         for nc in self.m_named_columns:
@@ -844,7 +849,7 @@ class Datset:
             yield nc.column()
 
     def subset(self, *colnames_as_strings: str) -> Datset:
-        result = datset_empty(self.num_rows())
+        result = datset_empty(self.num_records())
         for s in colnames_as_strings:
             nc = self.named_column_from_string(s)
             result.add(nc)
@@ -857,8 +862,8 @@ class Datset:
         return self.column(col).floats()
 
     def with_named_column(self, new_nc: NamedColumn):  # returns Datset
-        assert self.num_rows() == new_nc.num_rows()
-        result = datset_empty(self.num_rows())
+        assert self.num_records() == new_nc.num_rows()
+        result = datset_empty(self.num_records())
         for nc in self.range_named_columns():
             result.add(nc)
         result.add(new_nc)
@@ -867,7 +872,7 @@ class Datset:
 
     def without(self, ignore):  # ignore type is Datset and returns Datset
         assert isinstance(ignore, Datset)
-        result = datset_empty(self.num_rows())
+        result = datset_empty(self.num_records())
         for nc in self.range_named_columns():
             if not ignore.contains_colname(nc.colname()):
                 result.add(nc)
@@ -875,20 +880,20 @@ class Datset:
         return result
 
     def split(self, fraction_in_train: float) -> Tuple[Datset, Datset]:
-        assert self.num_rows() > 1
-        n_in_train = math.floor(self.num_rows() * fraction_in_train)
+        assert self.num_records() > 1
+        n_in_train = math.floor(self.num_records() * fraction_in_train)
         if n_in_train < 1:
             n_in_train = 1
-        elif n_in_train == self.num_rows():
-            n_in_train = self.num_rows() - 1
+        elif n_in_train == self.num_records():
+            n_in_train = self.num_records() - 1
 
-        indexes = arr.ints_random_permutation(self.num_rows())
+        indexes = arr.ints_random_permutation(self.num_records())
         train_rows = indexes.first_n_elements(n_in_train).sort()
-        test_rows = indexes.last_n_elements(self.num_rows() - n_in_train).sort()
+        test_rows = indexes.last_n_elements(self.num_records() - n_in_train).sort()
 
-        return self.subset_rows(train_rows), self.subset_rows(test_rows)
+        return self.subset_records(train_rows), self.subset_records(test_rows)
 
-    def subset_rows(self, row_indexes: arr.Ints) -> Datset:
+    def subset_records(self, row_indexes: arr.Ints) -> Datset:
         result = datset_empty(row_indexes.len())
         for nc in self.range_named_columns():
             result.add(nc.subset(row_indexes))
@@ -906,15 +911,27 @@ class Datset:
         assert isinstance(co, ColumnFloats)
         return datset_from_single_column(colname_from_string(colname_as_string), co.discretize(n_buckets))
 
+    def binarize(self, colname_as_string: str) -> Datset:
+        assert self.num_cols() == 1
+        co = self.column(0)
+        assert isinstance(co, ColumnFloats)
+        return datset_from_single_column(colname_from_string(colname_as_string), co.binarize())
+
     def appended_with(self, other: Datset) -> Datset:
-        assert self.num_rows() == other.num_rows()
-        result = datset_empty(self.num_rows())
+        assert self.num_records() == other.num_records()
+        result = datset_empty(self.num_records())
         for nc in self.range_named_columns():
             result.add(nc)
         for nc in other.range_named_columns():
             if self.contains_colname(nc.colname()):
                 bas.my_error(f"Can't append two datasets which share a column name ({nc.colname().string()})")
             result.add(nc)
+        return result
+
+    def column_descriptions(self) -> ColumnDescriptions:
+        result = column_descriptions_empty()
+        for nc in self.range_named_columns():
+            result.add(nc.column_description())
         return result
 
 
@@ -1145,19 +1162,19 @@ def colname_create(s: str) -> Colname:
     return Colname(s)
 
 
-def coldescribe_create(cn: Colname, ct: Coltype, vns: Valnames) -> Coldescribe:
-    return Coldescribe(cn, ct, vns)
+def coldescribe_create(cn: Colname, ct: Coltype, vns: Valnames) -> ColumnDescription:
+    return ColumnDescription(cn, ct, vns)
 
 
-def coldescribe_of_type_bools(cn: Colname) -> Coldescribe:
+def coldescribe_of_type_bools(cn: Colname) -> ColumnDescription:
     return coldescribe_create(cn, Coltype.bools, valnames_empty())
 
 
-class ColumnBool(Column):
+class ColumnBools(Column):
     def coltype(self) -> Coltype:
         return Coltype.bools
 
-    def coldescribe(self, cn: Colname) -> Coldescribe:
+    def coldescribe(self, cn: Colname) -> ColumnDescription:
         return coldescribe_of_type_bools(cn)
 
     def __init__(self, bs: arr.Bools):
@@ -1187,12 +1204,12 @@ class ColumnBool(Column):
     def bools(self) -> arr.Bools:
         return self.m_bools
 
-    def subset(self, indexes: arr.Ints) -> ColumnBool:
-        return ColumnBool(self.bools().subset(indexes))
+    def subset(self, indexes: arr.Ints) -> ColumnBools:
+        return ColumnBools(self.bools().subset(indexes))
 
 
-def column_from_bools(bs: arr.Bools) -> Column:
-    return ColumnBool(bs)
+def column_from_bools(bs: arr.Bools) -> ColumnBools:
+    return ColumnBools(bs)
 
 
 def column_default() -> Column:
@@ -1215,7 +1232,7 @@ def column_from_strings(ss: arr.Strings) -> Column:
     return column_from_cats(cats_from_strings(ss))
 
 
-def coldescribe_of_type_floats(cn: Colname) -> Coldescribe:
+def coldescribe_of_type_floats(cn: Colname) -> ColumnDescription:
     return coldescribe_create(cn, Coltype.floats, valnames_empty())
 
 
@@ -1263,11 +1280,19 @@ def cats_from_discretized_floats(fs: arr.Floats, n_buckets: int) -> Cats:
     return cats_create(index_to_bucket_number, vns)
 
 
+def bools_from_binarized_floats(fs: arr.Floats) -> arr.Bools:
+    middle = fs.median()
+    result = arr.bools_empty()
+    for f in fs.range():
+        result.add(f > middle)
+    return result
+
+
 class ColumnFloats(Column):
     def coltype(self) -> Coltype:
         return Coltype.floats
 
-    def coldescribe(self, cn: Colname) -> Coldescribe:
+    def coldescribe(self, cn: Colname) -> ColumnDescription:
         return coldescribe_of_type_floats(cn)
 
     def __init__(self, fs: arr.Floats):
@@ -1302,12 +1327,16 @@ class ColumnFloats(Column):
         cs = cats_from_discretized_floats(self.floats(), n_buckets)
         return column_from_cats(cs)
 
+    def binarize(self) -> ColumnBools:
+        bs = bools_from_binarized_floats(self.floats())
+        return column_from_bools(bs)
+
 
 def column_from_floats(fs: arr.Floats) -> Column:
     return ColumnFloats(fs)
 
 
-def coldescribe_of_type_cats(cn: Colname, vns: Valnames) -> Coldescribe:
+def coldescribe_of_type_cats(cn: Colname, vns: Valnames) -> ColumnDescription:
     return coldescribe_create(cn, Coltype.cats, vns)
 
 
@@ -1315,7 +1344,7 @@ class ColumnCats(Column):
     def coltype(self):
         return Coltype.cats
 
-    def coldescribe(self, cn: Colname) -> Coldescribe:
+    def coldescribe(self, cn: Colname) -> ColumnDescription:
         return coldescribe_of_type_cats(cn, self.cats().valnames())
 
     def __init__(self, cs: Cats):
@@ -1437,7 +1466,7 @@ def unit_test():
     assert ds.valname_from_row(1, 0).string() == '4/22/22'
     assert ds.valname_from_row(1, 2).string() == 'bob robertson'
     assert not ds.bool(2, 3)
-    assert ds.num_rows() == 5
+    assert ds.num_records() == 5
     assert ds.num_cols() == 4
 
 
@@ -1446,7 +1475,7 @@ def smat_from_multiline_string(s: str) -> Tuple[arr.Smat, bas.Errmess]:
     return csv.smat_from_strings(ss)
 
 
-def column_from_row(r: Row) -> Column:
+def column_from_record(r: Record) -> Column:
     assert r.len() > 0
     a0 = r.atom(0)
     if isinstance(a0, AtomBool):
@@ -1467,43 +1496,43 @@ def column_from_row(r: Row) -> Column:
         bas.my_error('Bad column type')
 
 
-class RowsArray:
-    def __init__(self, li: list[Row]):
+class RecordArray:
+    def __init__(self, li: list[Record]):
         self.m_list = li
         self.assert_ok()
 
     def assert_ok(self):
         assert isinstance(self.m_list, list)
         for r in self.m_list:
-            assert isinstance(r, Row)
+            assert isinstance(r, Record)
             r.assert_ok()
 
-    def add(self, r: Row):
+    def add(self, r: Record):
         self.m_list.append(r)
 
     def len(self) -> int:
         return len(self.m_list)
 
-    def row(self, i: int) -> Row:
+    def record(self, i: int) -> Record:
         assert 0 <= i < self.len()
         return self.m_list[i]
 
     def column(self, c: int) -> Column:
-        return column_from_row(self.column_of_atoms(c))
+        return column_from_record(self.column_of_atoms(c))
 
-    def column_of_atoms(self, c: int) -> Row:  # using 'Row' of Atoms to represent a column. Sorry.
-        result = row_empty()
+    def column_of_atoms(self, c: int) -> Record:  # using 'Record' of Atoms to represent a column. Sorry.
+        result = record_empty()
         for r in self.range():
             result.add(r.atom(c))
         return result
 
-    def range(self) -> Iterator[Row]:
+    def range(self) -> Iterator[Record]:
         for r in self.m_list:
             yield r
 
 
-def rows_array_empty() -> RowsArray:
-    return RowsArray([])
+def record_array_empty() -> RecordArray:
+    return RecordArray([])
 
 
 def colnames_from_strings(ss: arr.Strings) -> Colnames:
@@ -1523,14 +1552,46 @@ def datset_from_fmat(cns: Colnames, fm: arr.Fmat) -> Datset:
     return result
 
 
-def row_singleton(a: Atom) -> Row:
-    result = row_empty()
+def record_singleton(a: Atom) -> Record:
+    result = record_empty()
     result.add(a)
     return result
 
 
-def row_from_floats(fs: arr.Floats) -> Row:
-    r = row_empty()
+def record_from_floats(fs: arr.Floats) -> Record:
+    r = record_empty()
     for f in fs.range():
         r.add(atom_from_float(f))
     return r
+
+
+class ColumnDescriptions:
+    def __init__(self, li: List[ColumnDescription]):
+        self.m_list = li
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_list, list)
+        for cd in self.m_list:
+            assert isinstance(cd, ColumnDescription)
+            cd.assert_ok()
+
+    def column_description(self, index: int) -> ColumnDescription:
+        assert 0 <= index < self.len()
+        return self.m_list[index]
+
+    def add(self, cd: ColumnDescription):
+        self.m_list.append(cd)
+
+    def len(self) -> int:
+        return len(self.m_list)
+
+    def colnames(self) -> Colnames:
+        result = colnames_empty()
+        for cd in self.range():
+            result.add(cd.colname())
+        return result
+
+    def range(self) -> Iterator[ColumnDescription]:
+        for cd in self.m_list:
+            yield cd

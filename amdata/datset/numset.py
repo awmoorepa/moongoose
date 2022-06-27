@@ -1,5 +1,5 @@
 from __future__ import annotations
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from typing import List, Tuple, Iterator
 
 import datset.amarrays as arr
@@ -7,121 +7,18 @@ import datset.ambasic as bas
 import datset.dset as dat
 
 
-class Noomname:
-    def __init__(self, name_as_str: str):
-        self.m_name = name_as_str
-        self.assert_ok()
-
-    def assert_ok(self):
-        assert isinstance(self.m_name, str)
-        assert len(self.m_name) > 0
-        assert not bas.string_contains(self.m_name, bas.character_space())
-
-    def string(self) -> str:
-        return self.m_name
-
-    def colname(self) -> dat.Colname:
-        return dat.colname_create(self.string())
-
-    def equals(self, other) -> bool:
-        assert isinstance(other, Noomname)
-        return self.m_name == other.m_name
-
-
-class Noomnames:
-    def __init__(self, li: List[Noomname]):
-        self.m_noomnames = li
-        self.assert_ok()
-
-    def assert_ok(self):
-        for nn in self.m_noomnames:
-            assert isinstance(nn, Noomname)
-            nn.assert_ok()
-
-        assert not self.strings().contains_duplicates()
-
-    def add(self, nn: Noomname):
-        self.m_noomnames.append(nn)
-
-    def len(self) -> int:
-        return len(self.m_noomnames)
-
-    def append(self, nns):
-        assert isinstance(nns, Noomnames)
-        for nn in nns.range():
-            self.add(nn)
-
-    def strings(self) -> arr.Strings:
-        result = arr.strings_empty()
-        for nn in self.range():
-            result.add(nn.string())
-        return result
-
-    def noomname(self, i: int) -> Noomname:
-        assert 0 <= i < self.len()
-        return self.m_noomnames[i]
-
-    def equals(self, other) -> bool:
-        assert isinstance(other, Noomnames)
-        if self.len() != other.len():
-            return False
-
-        for a, b in zip(self.range(), other.range()):
-            if not a.equals(b):
-                return False
-        return True
-
-    def contains(self, target: Noomname) -> bool:
-        for candidate in self.range():
-            if candidate.equals(target):
-                return True
-        return False
-
-    def range(self) -> Iterator[Noomname]:
-        for nn in self.m_noomnames:
-            yield nn
-
-    def without_first(self):  # returns Noomnames
-        assert self.len() > 0
-        result = noomnames_empty()
-        for i, nn in enumerate(self.range()):
-            if i > 0:
-                result.add(nn)
-        assert isinstance(result, Noomnames)
-        return result
-
-
-def noomnames_empty() -> Noomnames:
-    return Noomnames([])
-
-
-def noomname_create(name_as_string: str) -> Noomname:
-    assert len(name_as_string) > 0
-    spa = bas.character_space()
-    und = bas.character_create('_')
-    return Noomname(bas.string_replace(name_as_string, spa, und))
-
-
-def noomnames_from_colname_and_valnames(cn: dat.Colname, encoding_to_valname: arr.Namer) -> Noomnames:
-    result = noomnames_empty()
-    for vn_string in encoding_to_valname.range_keys():
-        s = f'{cn.string()}_is_{vn_string}'
-        result.add(noomname_create(s))
-    return result
-
-
-class Noomset:
-    def __init__(self, nns: Noomnames, x: Termvecs):
-        self.m_noomnames = nns
+class NamedFloatRecords:
+    def __init__(self, nns: arr.Strings, x: FloatRecords):
+        self.m_col_to_name = nns
         self.m_row_to_col_to_value = x
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_noomnames, Noomnames)
-        self.m_noomnames.assert_ok()
-        assert isinstance(self.m_row_to_col_to_value, Termvecs)
+        assert isinstance(self.m_col_to_name, arr.Strings)
+        self.m_col_to_name.assert_ok()
+        assert isinstance(self.m_row_to_col_to_value, FloatRecords)
         self.m_row_to_col_to_value.assert_ok()
-        assert self.num_noomnames() + 1 == self.num_terms()
+        assert self.m_col_to_name.len() == self.m_row_to_col_to_value.num_cols()
 
     def explain(self):
         print(self.pretty_string())
@@ -134,54 +31,47 @@ class Noomset:
 
     def datset(self) -> dat.Datset:
         result = dat.datset_empty(self.num_rows())
-        for term_num, nn in enumerate(self.range_noomnames()):
-            c = self.column_as_floats(term_num)
-            result.add(dat.named_column_create(nn.colname(), dat.column_from_floats(c)))
+        for col, name in enumerate(self.names().range()):
+            c = self.column_as_floats(col)
+            result.add(dat.named_column_create(dat.colname_create(name), dat.column_from_floats(c)))
         return result
 
     def num_cols(self) -> int:
-        return self.m_noomnames.len()
+        return self.m_col_to_name.len()
 
-    def column_as_datset_column(self, c: int):
+    def column_as_datset_column(self, c: int) -> dat.Column:
         return dat.column_from_floats(self.column_as_floats(c))
 
-    def termvecs(self) -> Termvecs:
+    def termvecs(self) -> FloatRecords:
         return self.m_row_to_col_to_value
 
     def loosely_equals(self, other) -> bool:
-        assert isinstance(other, Noomset)
-        if not self.m_noomnames.equals(other.m_noomnames):
+        assert isinstance(other, NamedFloatRecords)
+        if not self.m_col_to_name.equals(other.m_col_to_name):
             return False
         return self.termvecs().loosely_equals(other.termvecs())
 
     def num_rows(self) -> int:
         return self.termvecs().num_rows()
 
-    def termvec(self, r: int) -> Termvec:
+    def termvec(self, r: int) -> FloatRecord:
         return self.termvecs().termvec(r)
-
-    def range_noomnames(self) -> Iterator[Noomname]:
-        return self.m_noomnames.range()
-
-    def num_noomnames(self) -> int:
-        return self.m_noomnames.len()
-
-    def num_terms(self) -> int:
-        return self.m_row_to_col_to_value.num_terms()
 
     def column_as_floats(self, term_num: int) -> arr.Floats:
         return self.termvecs().column_as_floats(term_num)
 
-
-def categorical_noomname(cn: dat.Colname, vn: dat.Valname) -> Noomname:
-    s = cn.string() + '_is_' + vn.string()
-    return noomname_create(s)
+    def names(self) -> arr.Strings:
+        return self.m_col_to_name
 
 
-def categorical_noomnames(cn: dat.Colname, encoding_to_valname: dat.Valnames) -> Noomnames:
-    nns = noomnames_empty()
+def categorical_name(cn: dat.Colname, vn: dat.Valname) -> str:
+    return cn.string() + '_is_' + vn.string()
+
+
+def categorical_names(cn: dat.Colname, encoding_to_valname: dat.Valnames) -> arr.Strings:
+    nns = arr.strings_empty()
     for vn in encoding_to_valname.range():
-        nns.add(categorical_noomname(cn, vn))
+        nns.add(categorical_name(cn, vn))
     return nns
 
 
@@ -215,17 +105,18 @@ def valname_encoder_create(encoding_to_valname: dat.Valnames) -> ValnameEncoder:
     return ValnameEncoder(nm)
 
 
-class Transformer:
+class Transformer(ABC):
+    @abstractmethod
     def assert_ok(self):
-        bas.my_error(f'{self} base')
+        pass
 
-    def noomnames(self) -> Noomnames:
-        bas.my_error(f'{self} base')
-        return noomnames_empty()
+    @abstractmethod
+    def names(self) -> arr.Strings:
+        pass
 
+    @abstractmethod
     def transform_atom(self, a: dat.Atom) -> arr.Floats:
-        bas.my_error(f'{self} base')
-        return arr.floats_empty()
+        pass
 
     def is_float(self) -> bool:
         return False
@@ -244,19 +135,19 @@ class CatTransformer(Transformer):
         return bas.intervals_all_unit(self.num_encodings())
 
     def __init__(self, cn: dat.Colname, encoding_to_valname: dat.Valnames):
-        self.m_noomnames = categorical_noomnames(cn, encoding_to_valname)
+        self.m_names = categorical_names(cn, encoding_to_valname)
         self.m_valname_encoder = valname_encoder_create(encoding_to_valname)
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_noomnames, Noomnames)
-        self.m_noomnames.assert_ok()
+        assert isinstance(self.m_names, arr.Strings)
+        self.m_names.assert_ok()
         assert isinstance(self.m_valname_encoder, ValnameEncoder)
         self.m_valname_encoder.assert_ok()
-        assert self.m_noomnames.len() == self.m_valname_encoder.num_encodings()
+        assert self.m_names.len() == self.m_valname_encoder.num_encodings()
 
-    def noomnames(self) -> Noomnames:
-        return self.m_noomnames
+    def names(self) -> arr.Strings:
+        return self.m_names
 
     def transform_valname(self, vn: dat.Valname):
         result = arr.floats_all_zero(self.num_encodings())
@@ -298,33 +189,22 @@ def transformer_from_cats(cn: dat.Colname, cts: dat.Cats) -> CatTransformer:
 #     categorical = 3
 
 
-def noomnames_singleton(nn: Noomname) -> Noomnames:
-    nns = noomnames_empty()
-    nns.add(nn)
-    return nns
-
-
-def noomname_default() -> Noomname:
-    return noomname_create('default')
-
-
 class FloatTransformer(Transformer):
     def scaling_intervals(self) -> bas.Intervals:
         return bas.intervals_singleton(self.interval())
 
-    def __init__(self, nn: Noomname, fs: arr.Floats):
-        self.m_noomname = nn
+    def __init__(self, name: str, fs: arr.Floats):
+        self.m_name = name
         self.m_interval = fs.extremes()
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_noomname, Noomname)
-        self.m_noomname.assert_ok()
+        assert isinstance(self.m_name, str)
         assert isinstance(self.m_interval, bas.Interval)
         self.m_interval.assert_ok()
 
-    def noomname(self) -> Noomname:
-        return self.m_noomname
+    def name(self) -> str:
+        return self.m_name
 
     def transform_float(self, f: float) -> arr.Floats:
         z = self.interval().fractional_from_absolute(f)
@@ -333,8 +213,8 @@ class FloatTransformer(Transformer):
     def interval(self) -> bas.Interval:
         return self.m_interval
 
-    def noomnames(self) -> Noomnames:
-        return noomnames_singleton(self.noomname())
+    def names(self) -> arr.Strings:
+        return arr.strings_singleton(self.name())
 
     def transform_atom(self, a: dat.Atom) -> arr.Floats:
         assert isinstance(a, dat.AtomFloat)
@@ -344,7 +224,7 @@ class FloatTransformer(Transformer):
         return True
 
 
-def float_transformer_create(nn: Noomname, fs: arr.Floats) -> FloatTransformer:
+def float_transformer_create(nn: str, fs: arr.Floats) -> FloatTransformer:
     return FloatTransformer(nn, fs)
 
 
@@ -352,16 +232,15 @@ class BoolTransformer(Transformer):
     def scaling_intervals(self) -> bas.Intervals:
         return bas.intervals_all_unit(1)
 
-    def __init__(self, nn: Noomname):
-        self.m_noomname = nn
+    def __init__(self, nn: str):
+        self.m_name = nn
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_noomname, Noomname)
-        self.m_noomname.assert_ok()
+        assert isinstance(self.m_name, str)
 
-    def noomname(self) -> Noomname:
-        return self.m_noomname
+    def name(self) -> str:
+        return self.m_name
 
     def transform_bool(self, b: bool) -> arr.Floats:
         assert isinstance(self, BoolTransformer)
@@ -372,28 +251,24 @@ class BoolTransformer(Transformer):
             z = 0.0
         return arr.floats_singleton(z)
 
-    def noomnames(self) -> Noomnames:
-        return noomnames_singleton(self.noomname())
+    def names(self) -> arr.Strings:
+        return arr.strings_singleton(self.name())
 
     def transform_atom(self, a: dat.Atom) -> arr.Floats:
         assert isinstance(a, dat.AtomBool)
         return self.transform_bool(a.bool())
 
 
-def bool_transformer_create(nn: Noomname) -> BoolTransformer:
+def bool_transformer_create(nn: str) -> BoolTransformer:
     return BoolTransformer(nn)
 
 
 def bool_transformer_from_colname(cn: dat.Colname) -> BoolTransformer:
-    return bool_transformer_create(noomname_from_colname(cn))
-
-
-def noomname_from_colname(cn: dat.Colname) -> Noomname:
-    return noomname_create(cn.string())
+    return bool_transformer_create(cn.string())
 
 
 def transformer_from_floats(cn: dat.Colname, fs: arr.Floats) -> FloatTransformer:
-    return float_transformer_create(noomname_from_colname(cn), fs)
+    return float_transformer_create(cn.string(), fs)
 
 
 def transformer_from_column(cn: dat.Colname, c: dat.Column) -> Transformer:
@@ -401,7 +276,7 @@ def transformer_from_column(cn: dat.Colname, c: dat.Column) -> Transformer:
         return transformer_from_cats(cn, c.cats())
     elif isinstance(c, dat.ColumnFloats):
         return transformer_from_floats(cn, c.floats())
-    elif isinstance(c, dat.ColumnBool):
+    elif isinstance(c, dat.ColumnBools):
         return bool_transformer_from_colname(cn)
     else:
         bas.my_error("bad Transtype")
@@ -411,9 +286,9 @@ def transformer_from_named_column(nc: dat.NamedColumn) -> Transformer:
     return transformer_from_column(nc.colname(), nc.column())
 
 
-def noomset_from_termvecs(nns: Noomnames, tvs: Termvecs) -> Noomset:
-    assert nns.len() == tvs.num_terms() - 1
-    return Noomset(nns, tvs)
+def named_float_records_create(nns: arr.Strings, frs: FloatRecords) -> NamedFloatRecords:
+    assert nns.len() == frs.num_cols()
+    return NamedFloatRecords(nns, frs)
 
 
 class Numvec:
@@ -433,8 +308,8 @@ def numvec_create(fs: arr.Floats) -> Numvec:
     return Numvec(fs)
 
 
-def termvec_create(fs: arr.Floats) -> Termvec:
-    return Termvec(fs)
+def termvec_create(fs: arr.Floats) -> FloatRecord:
+    return FloatRecord(fs)
 
 
 def termvec_from_numvec(nv: Numvec):
@@ -443,8 +318,8 @@ def termvec_from_numvec(nv: Numvec):
     return termvec_create(fs)
 
 
-def termvecs_empty(n_terms) -> Termvecs:
-    return Termvecs(n_terms, [])
+def termvecs_empty(n_terms) -> FloatRecords:
+    return FloatRecords(n_terms, [])
 
 
 class Transformers:
@@ -461,10 +336,10 @@ class Transformers:
     def add(self, tf: Transformer):
         self.m_transformers.append(tf)
 
-    def noomnames(self) -> Noomnames:
-        result = noomnames_empty()
+    def names(self) -> arr.Strings:
+        result = arr.strings_empty()
         for tf in self.range():
-            result.append(tf.noomnames())
+            result.append(tf.names())
         return result
 
     def transformer(self, i) -> Transformer:
@@ -474,29 +349,32 @@ class Transformers:
     def len(self) -> int:
         return len(self.m_transformers)
 
-    def numvec_from_row(self, rw: dat.Row) -> Numvec:
+    def numvec_from_row(self, rw: dat.Record) -> Numvec:
         result = arr.floats_empty()
         for t, a in zip(self.range(), rw.range()):
             fs = t.transform_atom(a)
             result.append(fs)
         return numvec_create(result)
 
-    def transform_datset(self, ds: dat.Datset) -> Noomset:
-        nns = self.noomnames()
+    def transform_datset(self, ds: dat.Datset) -> NamedFloatRecords:
+        nns = self.names()
         n_noomnames = nns.len()
         n_terms = n_noomnames + 1  # There's a constant term at the left
-        tvs = termvecs_empty(n_terms)
-        for row in ds.range_rows():
-            z = self.termvec_from_row(row)
-            tvs.add(z)
-        return noomset_from_termvecs(nns, tvs)
+        frs = termvecs_empty(n_terms)
+        for row in ds.range_records():
+            z = self.float_record_from_record(row)
+            frs.add(z)
+        return named_float_records_create(nns, frs)
 
     def range(self) -> Iterator[Transformer]:
         for tf in self.m_transformers:
             yield tf
 
-    def termvec_from_row(self, row: dat.Row) -> Termvec:
+    def float_record_from_record(self, row: dat.Record) -> FloatRecord:
         return termvec_from_numvec(self.numvec_from_row(row))
+
+    def named_float_records_from_datset(self, inputs):
+        pass
 
 
 def transformers_empty():
@@ -516,54 +394,47 @@ def transformers_from_datset(ds: dat.Datset) -> Transformers:
     return tf
 
 
-def noomset_from_datset(ds: dat.Datset) -> Noomset:
+def noomset_from_datset(ds: dat.Datset) -> NamedFloatRecords:
     tf = transformers_from_datset(ds)
     return tf.transform_datset(ds)
 
 
-def noomset_default() -> Noomset:
-    nn = noomname_create("default")
-    nns = noomnames_singleton(nn)
-    return noomset_from_termvecs(nns, termvecs_empty(1))
+def float_records_empty(n_cols: int):
+    return FloatRecords(n_cols, [])
 
 
-def noomnames_from_strings(ss: arr.Strings) -> Noomnames:
-    nns = noomnames_empty()
-    for s in ss.range():
-        nn = noomname_create(s)
-        nns.add(nn)
-
-    return nns
+def named_float_records_default() -> NamedFloatRecords:
+    return named_float_records_create(arr.strings_empty(), float_records_empty(0))
 
 
-def termvecs_from_fmat(fm: arr.Fmat) -> Termvecs:
+def termvecs_from_fmat(fm: arr.Fmat) -> FloatRecords:
     result = termvecs_empty(fm.num_cols())
     for r in fm.range_rows():
         result.add(termvec_create(r))
     return result
 
 
-def noomset_from_smat(sm: arr.Smat) -> Tuple[Noomset, bas.Errmess]:
+def named_float_records_from_smat(sm: arr.Smat) -> Tuple[NamedFloatRecords, bas.Errmess]:
     if sm.num_rows() < 1:
-        return noomset_default(), bas.errmess_error("Need at least 1 row")
+        return named_float_records_default(), bas.errmess_error("Need at least 1 row")
 
-    nns = noomnames_from_strings(sm.row(0)).without_first()
+    nns = sm.row(0)
     rest = sm.without_first_row()
     fm, err = arr.fmat_from_smat(rest)
 
     if err.is_error():
-        return noomset_default(), err
+        return named_float_records_default(), err
 
-    return noomset_from_termvecs(nns, termvecs_from_fmat(fm)), bas.errmess_ok()
+    return named_float_records_create(nns, termvecs_from_fmat(fm)), bas.errmess_ok()
 
 
-def noomset_from_multiline_string(s: str) -> Tuple[Noomset, bas.Errmess]:
+def named_float_records_from_multiline_string(s: str) -> Tuple[NamedFloatRecords, bas.Errmess]:
     sm, em = dat.smat_from_multiline_string(s)
 
     if em.is_error():
-        return noomset_default(), em
+        return named_float_records_default(), em
 
-    ns, em2 = noomset_from_smat(sm)
+    ns, em2 = named_float_records_from_smat(sm)
 
     return ns, em2
 
@@ -587,7 +458,7 @@ def unit_test():
 
     assert ds_errmess.is_ok()
 
-    ns, ns_errmess = noomset_from_multiline_string(ns_string)
+    ns, ns_errmess = named_float_records_from_multiline_string(ns_string)
 
     print(f'ns_errmess = {ns_errmess.string()}')
     assert ns_errmess.is_ok()
@@ -596,7 +467,7 @@ def unit_test():
     assert ns2.loosely_equals(ns)
 
 
-class Termvec:
+class FloatRecord:
     def __init__(self, fs: arr.Floats):
         self.m_floats = fs
         self.assert_ok()
@@ -608,46 +479,46 @@ class Termvec:
     def floats(self) -> arr.Floats:
         return self.m_floats
 
-    def num_terms(self) -> int:
+    def len(self) -> int:
         return self.m_floats.len()
 
-    def float(self, term_num: int) -> float:
-        return self.m_floats.float(term_num)
+    def float(self, fr_index: int) -> float:
+        return self.m_floats.float(fr_index)
 
-    def loosely_equals(self, other: Termvec) -> bool:
+    def loosely_equals(self, other: FloatRecord) -> bool:
         return self.floats().loosely_equals(other.floats())
 
     def times(self, fs: arr.Floats) -> float:
         return self.floats().dot_product(fs)
 
 
-class Termvecs:
-    def __init__(self, n_terms: int, li: list):
+class FloatRecords:
+    def __init__(self, n_terms: int, li: List[FloatRecord]):
         self.m_num_terms = n_terms
         self.m_list = li
         self.assert_ok()
 
     def assert_ok(self):
         assert isinstance(self.m_list, list)
-        for tv in self.m_list:
-            assert isinstance(tv, Termvec)
-            tv.assert_ok()
-            assert tv.num_terms() == self.m_num_terms
+        for fr in self.m_list:
+            assert isinstance(fr, FloatRecord)
+            fr.assert_ok()
+            assert fr.len() == self.m_num_terms
 
     def num_rows(self) -> int:
         return len(self.m_list)
 
-    def num_terms(self) -> int:
+    def num_cols(self) -> int:
         return self.m_num_terms
 
-    def termvec(self, k: int) -> Termvec:
+    def termvec(self, k: int) -> FloatRecord:
         assert 0 <= k < self.num_rows()
         return self.m_list[k]
 
     def float(self, row: int, term_num: int) -> float:
         return self.termvec(row).float(term_num)
 
-    def loosely_equals(self, other: Termvecs) -> bool:
+    def loosely_equals(self, other: FloatRecords) -> bool:
         if self.num_rows() != other.num_rows():
             return False
 
@@ -657,22 +528,22 @@ class Termvecs:
 
         return True
 
-    def range(self) -> Iterator[Termvec]:
-        for tv in self.m_list:
-            yield tv
+    def range(self) -> Iterator[FloatRecord]:
+        for fr in self.m_list:
+            yield fr
 
     def column_as_floats(self, term_num: int) -> arr.Floats:
         result = arr.floats_empty()
-        for tv in self.range():
-            result.add(tv.float(term_num))
+        for fr in self.range():
+            result.add(fr.float(term_num))
         return result
 
-    def add(self, tv: Termvec):
-        assert self.num_terms() == tv.num_terms()
-        self.m_list.append(tv)
+    def add(self, fr: FloatRecord):
+        assert self.num_cols() == fr.len()
+        self.m_list.append(fr)
 
     def times(self, fs: arr.Floats) -> arr.Floats:
         result = arr.floats_empty()
-        for tv in self.range():
-            result.add(tv.times(fs))
+        for fr in self.range():
+            result.add(fr.times(fs))
         return result

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import Tuple, List, Iterator
 
 import datset.ambasic as bas
@@ -229,6 +230,75 @@ class Floats:
 
     def sum_squares(self) -> float:
         return self.dot_product(self)
+
+    def median_helper(self) -> float:
+        le = self.len()
+        assert le > 0
+        half_length = le // 2  # integer division, rounds down
+        assert isinstance(half_length, int)
+        if le % 2 == 0:
+            v0, v1 = self.kth_smallest_two_elements(half_length)
+            return (v0 + v1) / 2
+        else:
+            return self.kth_smallest_element(half_length)
+
+    def median_slow(self) -> float:
+        s = self.sorted()
+        h = self.len() // 2
+        if s.len() % 2 == 0:
+            return (s.float(h) + s.float(h + 1)) / 2
+        else:
+            return s.float(h)
+
+    def median(self) -> float:
+        result = self.median_helper()
+        print(f'remove this slow test')
+        assert bas.loosely_equals(result, self.median_slow())
+        return result
+
+    def kth_smallest_two_elements(self, k: int) -> Tuple[float, float]:
+        assert 0 <= k < self.len() - 1
+
+        lower, pivot, higher = self.split_with_random_pivot()
+
+        if k + 1 < lower.len():
+            return lower.kth_smallest_two_elements(k)
+        elif k + 1 == lower.len():
+            return lower.max(), pivot
+        elif k == lower.len():
+            return pivot, higher.min()
+        else:
+            return higher.kth_smallest_two_elements(k - lower.len() - 1)
+
+    def sorted(self) -> Floats:
+        return self.subset(self.indexes_of_sorted())
+
+    def kth_smallest_element(self, k: int) -> float:
+        assert 0 <= k < self.len()
+
+        lower, pivot, higher = self.split_with_random_pivot()
+
+        if k < lower.len():
+            return lower.kth_smallest_element(k)
+        elif k == lower.len():
+            return pivot
+        else:
+            return higher.kth_smallest_element(k - lower.len() - 1)
+
+    def split_with_random_pivot(self) -> Tuple[Floats, float, Floats]:
+        pivot_index = bas.int_random(self.len())
+        pivot = self.float(pivot_index)
+        lower = floats_empty()
+        higher = floats_empty()
+
+        for i, f in enumerate(self.range()):
+            if i != pivot_index:
+                if f < pivot:
+                    lower.add(f)
+                else:
+                    higher.add(f)
+
+        return lower, pivot, higher
 
 
 class Namer:
@@ -508,6 +578,16 @@ class Ints:
     def sum(self) -> int:
         return sum(self.m_ints)
 
+    def is_weakly_increasing(self) -> bool:
+        for i in range(self.len() - 1):
+            if self.int(i) > self.int(i + 1):
+                return False
+        return True
+
+    def last_element(self) -> int:
+        assert self.len() > 0
+        return self.int(self.len() - 1)
+
 
 def indexes_of_sorted(li: list) -> Ints:
     pairs = zip(range(0, len(li)), li)
@@ -658,7 +738,7 @@ class Strings:
         assert isinstance(result, Strings)
         return result
 
-    def range(self):
+    def range(self) -> Iterator[str]:
         for s in self.m_strings:
             yield s
 
@@ -850,6 +930,15 @@ def unit_test_transpose():
     assert s.transpose().equals(t)
 
 
+def unit_test_median():
+    fs = floats_varargs(3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0)
+    assert bas.loosely_equals(fs.median(), 4.5)
+    assert bas.loosely_equals(fs.sorted().median(), 4.5)
+    fs.add(4.0)
+    assert bas.loosely_equals(fs.median(), 4.0)
+    assert bas.loosely_equals(fs.sorted().median(), 4.0)
+
+
 def unit_test():
     assert not bas.string_contains('hello_said_peter', bas.character_space())
     assert bas.string_contains('hello_said peter', bas.character_space())
@@ -860,6 +949,7 @@ def unit_test():
     unit_test_namer()
     unit_test_index_sort()
     unit_test_transpose()
+    unit_test_median()
 
 
 def strings_without_first_n_elements(ss: Strings, n: int) -> Strings:
@@ -1149,6 +1239,16 @@ class RowIndexedFmat:
     def increment(self, r: int, col: int, delta: float):
         self.floats(r).increment(col, delta)
 
+    def deep_copy(self) -> RowIndexedFmat:
+        result = row_indexed_fmat_with_no_rows(self.num_cols())
+        for r in self.range_rows():
+            result.add_row(r.deep_copy())
+        return result
+
+    def set(self, row: int, column: int, f: float):
+        self.m_row_to_col_to_value.floats(row).set(column, f)
+        assert bas.loosely_equals(f, self.floats(row).float(column))
+
 
 def row_indexed_fmat_with_no_rows(n_cols: int):
     return RowIndexedFmat(n_cols)
@@ -1232,6 +1332,18 @@ class Fmat:
 
     def range_cols(self) -> Iterator[Floats]:
         return self.m_col_to_row_to_value.range_rows()
+
+    def deep_copy(self) -> Fmat:
+        return fmat_create(self.m_row_to_col_to_value.deep_copy())
+
+    def increment(self, row: int, column: int, delta: float):
+        self.set(row, column, self.float(row, column) + delta)
+
+    def set(self, row: int, column: int, f: float):
+        self.m_row_to_col_to_value.set(row, column, f)
+        self.m_col_to_row_to_value.set(column, row, f)
+        if bas.expensive_assertions:
+            self.assert_ok()
 
 
 def fmat_create(rif: RowIndexedFmat) -> Fmat:

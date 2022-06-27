@@ -293,8 +293,8 @@ def show_model_ffc(mod: lea.Model, x: Floatvec, y: Floatvec, z: Catvec):
         col_to_rgb = []
         for col in range(n_cells_per_edge):
             x_coord = xlo + (xhi - xlo) * (col + 0.5) / n_cells_per_edge
-            model_inputs = dat.row_from_floats(arr.floats_varargs(x_coord, y_coord))
-            model_output = mod.predict_from_row(model_inputs)
+            model_inputs = dat.record_from_floats(arr.floats_varargs(x_coord, y_coord))
+            model_output = mod.predict_from_record(model_inputs)
             assert isinstance(model_output, dis.Multinomial)
             rgb = linear_combination(colos, model_output.floats())
             col_to_rgb.append(rgb.list())
@@ -347,19 +347,19 @@ def transformers_encoding(tfs: noo.Transformers) -> str:
     return result
 
 
-def coldescribe_encoding(cd: dat.Coldescribe) -> str:
+def coldescribe_encoding(cd: dat.ColumnDescription) -> str:
     if cd.coltype() == dat.Coltype.floats:
         return 'f'
     else:
         return 'c'
 
 
-def modnames_encoding(mn: lea.Modnames) -> str:
-    return transformers_encoding(mn.input_transformers()) + coldescribe_encoding(mn.output_describe())
+def modnames_encoding(mn: lea.ModelDescription) -> str:
+    return transformers_encoding(mn.inputs()) + coldescribe_encoding(mn.output())
 
 
 def model_encoding(mod: lea.Model) -> str:
-    return modnames_encoding(mod.modnames())
+    return modnames_encoding(mod.model_description())
 
 
 def fvc_from_named_column(nc: dat.NamedColumn) -> Floatvec:
@@ -377,7 +377,7 @@ def show_model_ff(mod: lea.Model, x: Floatvec, y: Floatvec):
     print(f'xs = {xs.pretty_string()}')
     ys = arr.floats_empty()
     for x in xs.range():
-        d = mod.predict_from_row(dat.row_singleton(dat.atom_from_float(x)))
+        d = mod.predict_from_record(dat.record_singleton(dat.atom_from_float(x)))
         assert isinstance(d, dis.Gaussian)
         y = d.mean()
         ys.add(y)
@@ -400,7 +400,7 @@ def show_model_fc(mod: lea.Model, x: Floatvec, y: Catvec):
     value_to_row_to_prob = arr.floats_array_of_empties(y.num_values())
 
     for x in xs.range():
-        d = mod.predict_from_row(dat.row_singleton(dat.atom_from_float(x)))
+        d = mod.predict_from_record(dat.record_singleton(dat.atom_from_float(x)))
         assert isinstance(d, dis.Multinomial)
         value_to_prob = d.floats()
         for prob, row_to_prob in zip(value_to_prob.range(), value_to_row_to_prob.range()):
@@ -427,7 +427,7 @@ def compute_x_to_y_to_prob(input_valnames: dat.Valnames, mod: lea.Model) -> arr.
 
     for vn in input_valnames.range():
         a = dat.atom_from_valname(vn)
-        mu = mod.predict_from_row(dat.row_singleton(a))
+        mu = mod.predict_from_record(dat.record_singleton(a))
         assert isinstance(mu, dis.Multinomial)
         x_to_y_to_prob.add(mu.floats())
 
@@ -466,7 +466,7 @@ def show_model_cc(mod: lea.Model, x: Catvec, y: Catvec):
 
 def show_model(mod: lea.Model, inputs: dat.Datset, output: dat.Datset):
     assert output.num_cols() == 1
-    assert output.num_rows() == inputs.num_rows()
+    assert output.num_records() == inputs.num_records()
     mod_encoding = model_encoding(mod)
     train = inputs.with_named_column(output.named_column(0))
     assert isinstance(train, dat.Datset)
