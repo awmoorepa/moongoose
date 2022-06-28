@@ -36,29 +36,29 @@ class NamedFloatRecords:
             result.add(dat.named_column_create(dat.colname_create(name), dat.column_from_floats(c)))
         return result
 
-    def num_cols(self) -> int:
+    def num_fr_indexes(self) -> int:
         return self.m_col_to_name.len()
 
     def column_as_datset_column(self, c: int) -> dat.Column:
         return dat.column_from_floats(self.column_as_floats(c))
 
-    def termvecs(self) -> FloatRecords:
+    def float_records(self) -> FloatRecords:
         return self.m_row_to_col_to_value
 
     def loosely_equals(self, other) -> bool:
         assert isinstance(other, NamedFloatRecords)
         if not self.m_col_to_name.equals(other.m_col_to_name):
             return False
-        return self.termvecs().loosely_equals(other.termvecs())
+        return self.float_records().loosely_equals(other.float_records())
 
     def num_rows(self) -> int:
-        return self.termvecs().num_rows()
+        return self.float_records().num_rows()
 
-    def termvec(self, r: int) -> FloatRecord:
-        return self.termvecs().termvec(r)
+    def float_record(self, r: int) -> FloatRecord:
+        return self.float_records().float_record(r)
 
-    def column_as_floats(self, term_num: int) -> arr.Floats:
-        return self.termvecs().column_as_floats(term_num)
+    def column_as_floats(self, fr_index: int) -> arr.Floats:
+        return self.float_records().column_as_floats(fr_index)
 
     def names(self) -> arr.Strings:
         return self.m_col_to_name
@@ -291,35 +291,8 @@ def named_float_records_create(nns: arr.Strings, frs: FloatRecords) -> NamedFloa
     return NamedFloatRecords(nns, frs)
 
 
-class Numvec:
-    def __init__(self, fs: arr.Floats):
-        self.m_floats = fs
-        self.assert_ok()
-
-    def assert_ok(self):
-        assert isinstance(self.m_floats, arr.Floats)
-        self.m_floats.assert_ok()
-
-    def floats(self) -> arr.Floats:
-        return self.m_floats
-
-
-def numvec_create(fs: arr.Floats) -> Numvec:
-    return Numvec(fs)
-
-
-def termvec_create(fs: arr.Floats) -> FloatRecord:
+def float_record_create(fs: arr.Floats) -> FloatRecord:
     return FloatRecord(fs)
-
-
-def termvec_from_numvec(nv: Numvec):
-    fs = arr.floats_singleton(1.0)
-    fs.append(nv.floats())
-    return termvec_create(fs)
-
-
-def termvecs_empty(n_terms) -> FloatRecords:
-    return FloatRecords(n_terms, [])
 
 
 class Transformers:
@@ -336,7 +309,7 @@ class Transformers:
     def add(self, tf: Transformer):
         self.m_transformers.append(tf)
 
-    def names(self) -> arr.Strings:
+    def float_record_names(self) -> arr.Strings:
         result = arr.strings_empty()
         for tf in self.range():
             result.append(tf.names())
@@ -349,32 +322,33 @@ class Transformers:
     def len(self) -> int:
         return len(self.m_transformers)
 
-    def numvec_from_row(self, rw: dat.Record) -> Numvec:
-        result = arr.floats_empty()
-        for t, a in zip(self.range(), rw.range()):
-            fs = t.transform_atom(a)
-            result.append(fs)
-        return numvec_create(result)
-
-    def transform_datset(self, ds: dat.Datset) -> NamedFloatRecords:
-        nns = self.names()
-        n_noomnames = nns.len()
-        n_terms = n_noomnames + 1  # There's a constant term at the left
-        frs = termvecs_empty(n_terms)
+    def named_float_records_from_datset(self, ds: dat.Datset) -> NamedFloatRecords:
+        nns = self.float_record_names()
+        n_fr_indexes = nns.len()
+        frs = float_records_empty(n_fr_indexes)
         for row in ds.range_records():
             z = self.float_record_from_record(row)
             frs.add(z)
-        return named_float_records_create(nns, frs)
+        result = named_float_records_create(nns, frs)
+        result.assert_ok()
+        return result
 
     def range(self) -> Iterator[Transformer]:
         for tf in self.m_transformers:
             yield tf
 
     def float_record_from_record(self, row: dat.Record) -> FloatRecord:
-        return termvec_from_numvec(self.numvec_from_row(row))
+        result = arr.floats_empty()
+        for a, tf in zip(row.range(), self.range()):
+            fs = tf.transform_atom(a)
+            result.append(fs)
+        return result
 
-    def named_float_records_from_datset(self, inputs):
-        pass
+    def scaling_intervals(self) -> bas.Intervals:
+        result = bas.intervals_empty()
+        for tf in self.range():
+            result.append(tf.scaling_intervals())
+        return result
 
 
 def transformers_empty():
@@ -396,7 +370,7 @@ def transformers_from_datset(ds: dat.Datset) -> Transformers:
 
 def noomset_from_datset(ds: dat.Datset) -> NamedFloatRecords:
     tf = transformers_from_datset(ds)
-    return tf.transform_datset(ds)
+    return tf.named_float_records_from_datset(ds)
 
 
 def float_records_empty(n_cols: int):
@@ -407,10 +381,10 @@ def named_float_records_default() -> NamedFloatRecords:
     return named_float_records_create(arr.strings_empty(), float_records_empty(0))
 
 
-def termvecs_from_fmat(fm: arr.Fmat) -> FloatRecords:
-    result = termvecs_empty(fm.num_cols())
+def float_records_from_fmat(fm: arr.Fmat) -> FloatRecords:
+    result = float_records_empty(fm.num_cols())
     for r in fm.range_rows():
-        result.add(termvec_create(r))
+        result.add(float_record_create(r))
     return result
 
 
@@ -425,7 +399,7 @@ def named_float_records_from_smat(sm: arr.Smat) -> Tuple[NamedFloatRecords, bas.
     if err.is_error():
         return named_float_records_default(), err
 
-    return named_float_records_create(nns, termvecs_from_fmat(fm)), bas.errmess_ok()
+    return named_float_records_create(nns, float_records_from_fmat(fm)), bas.errmess_ok()
 
 
 def named_float_records_from_multiline_string(s: str) -> Tuple[NamedFloatRecords, bas.Errmess]:
@@ -511,12 +485,12 @@ class FloatRecords:
     def num_cols(self) -> int:
         return self.m_num_terms
 
-    def termvec(self, k: int) -> FloatRecord:
+    def float_record(self, k: int) -> FloatRecord:
         assert 0 <= k < self.num_rows()
         return self.m_list[k]
 
     def float(self, row: int, term_num: int) -> float:
-        return self.termvec(row).float(term_num)
+        return self.float_record(row).float(term_num)
 
     def loosely_equals(self, other: FloatRecords) -> bool:
         if self.num_rows() != other.num_rows():
@@ -547,3 +521,38 @@ class FloatRecords:
         for fr in self.range():
             result.add(fr.times(fs))
         return result
+
+
+class TransformerDescription:
+    def __init__(self, inputs: Transformers, output: dat.ColumnDescription):
+        self.m_input = inputs
+        self.m_output = output
+        self.assert_ok()
+
+    def input_transformers(self) -> Transformers:
+        return self.m_input
+
+    def output_description(self) -> dat.ColumnDescription:
+        return self.m_output
+
+    def float_record_names(self) -> arr.Strings:
+        return self.input_transformers().float_record_names()
+
+    def input_intervals(self) -> bas.Intervals:
+        return self.input_transformers().scaling_intervals()
+
+    def assert_ok(self):
+        assert isinstance(self.m_input, Transformers)
+        self.m_input.assert_ok()
+        assert isinstance(self.m_output, dat.ColumnDescription)
+        self.m_output.assert_ok()
+
+
+def transformer_description_create(input_transformers: Transformers, output_description: dat.ColumnDescription):
+    return TransformerDescription(input_transformers, output_description)
+
+
+def transformer_description_from_datset(inputs: dat.Datset, output: dat.NamedColumn) -> TransformerDescription:
+    input_transformers = transformers_from_datset(inputs)
+    output_description = output.column_description()
+    return transformer_description_create(input_transformers, output_description)

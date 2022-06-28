@@ -300,6 +300,25 @@ class Floats:
 
         return lower, pivot, higher
 
+    def multiply_by(self, scale):
+        for i, f in enumerate(self.m_floats):
+            self.m_floats[i] *= scale
+
+    def map_product_with(self, other: Floats) -> Floats:
+        result = floats_empty()
+        for a, b in zip(self.range(), other.range()):
+            result.add(a * b)
+        return result
+
+    def is_loosely_constant(self) -> bool:
+        if self.len() < 2:
+            return True
+        first = self.float(0)
+        for f in self.range():
+            if not bas.loosely_equals(first, f):
+                return False
+        return True
+
 
 class Namer:
     def __init__(self):
@@ -588,6 +607,17 @@ class Ints:
         assert self.len() > 0
         return self.int(self.len() - 1)
 
+    def deep_copy(self) -> Ints:
+        result = ints_empty()
+        for i in self.range():
+            result.add(i)
+        return result
+
+    def copied_with_one_element_added(self, i: int) -> Ints:
+        result = self.deep_copy()
+        result.add(i)
+        return result
+
 
 def indexes_of_sorted(li: list) -> Ints:
     pairs = zip(range(0, len(li)), li)
@@ -728,7 +758,7 @@ class Strings:
 
         return True
 
-    def with_many(self, other):  # other type Strings, result type Strings
+    def with_many(self, other:Strings)->Strings:  # other type Strings, result type Strings
         assert isinstance(other, Strings)
         result = strings_empty()
         for s in self.range():
@@ -744,6 +774,12 @@ class Strings:
 
     def list(self) -> List[str]:
         return self.m_strings
+
+    def decorate(self, left: str, right: str) -> Strings:
+        result = strings_empty()
+        for s in self.range():
+            result.add(f'{left}{s}{right}')
+        return result
 
 
 def strings_empty() -> Strings:
@@ -804,7 +840,6 @@ class StringsArray:
     def range(self):
         for ss in self.m_strings_array:
             yield ss
-
 
 def strings_array_empty() -> StringsArray:
     return StringsArray([])
@@ -1744,3 +1779,12 @@ def strings_varargs(*li: str) -> Strings:
 
 def fmat_of_zeroes(n_rows: int, n_columns: int) -> Fmat:
     return fmat_create(row_indexed_fmat_of_zeroes(n_rows, n_columns))
+
+
+def strings_array_varargs(*li: Strings) -> StringsArray:
+    assert isinstance(li, tuple)
+    result = strings_array_empty()
+    for ss in li:
+        assert isinstance(ss, Strings)
+        result.add(ss)
+    return result

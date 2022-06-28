@@ -421,6 +421,10 @@ class Intervals:
     def len(self) -> int:
         return len(self.m_list)
 
+    def append(self, other: Intervals):
+        for iv in other.range():
+            self.add(iv)
+
 
 def intervals_empty() -> Intervals:
     return Intervals([])

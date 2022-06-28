@@ -19,6 +19,7 @@ def unit_tests():
     csv.unit_test()
     dat.unit_test()
     num.unit_test()
+    lin.unit_test()
 
 
 def run():

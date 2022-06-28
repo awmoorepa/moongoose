@@ -72,143 +72,13 @@ def q_from_y(y_k: dat.Atom) -> float:
 penalty_parameter: float = 0.0001
 
 
-# def ws_penalty_second_derivative() -> float:
-#     return penalty_parameter * 2
-#
-#
-# class Weights:
-#     def __init__(self, fs: arr.Floats):
-#         self.m_weights = fs
-#         self.assert_ok()
-#
-#     def assert_ok(self):
-#         assert isinstance(self.m_weights, arr.Floats)
-#         self.m_weights.assert_ok()
-#
-#     def loglike(self, le: ModelClass, inputs: noo.Termvecs, output: dat.Column) -> float:
-#         beta_xs = self.premultiplied_by(inputs)
-#         return le.loglike(beta_xs, output) - self.penalty()
-#
-#     def loglike_derivative(self, le: ModelClass, inputs: noo.Termvecs, output: dat.Column, col: int) -> float:
-#         result = 0.0
-#         for x_k, y_k in zip(inputs.range(), output.range()):
-#             result += self.loglike_derivative_from_row(le, x_k, y_k, col)
-#         return result - self.penalty_derivative(col)
-#
-#     def loglike_second_derivative(self, le: ModelClass, inputs: noo.Termvecs, output: dat.Column, col: int) -> float:
-#         result = 0.0
-#         for x_k, y_k in zip(inputs.range(), output.range()):
-#             result += self.loglike_second_derivative_from_row(le, x_k, y_k, col)
-#         return result - ws_penalty_second_derivative()
-#
-#     def increment(self, col: int, delta: float):
-#         self.m_weights.increment(col, delta)
-#
-#     def floats(self) -> arr.Floats:
-#         return self.m_weights
-#
-#     def loglike_derivative_from_row(self, le: ModelClass, x_k: noo.Termvec, y_k: dat.Atom, j: int) -> float:
-#         return le.loglike_derivative_from_row(self, x_k, y_k, j)
-#
-#     def loglike_second_derivative_from_row(self, le: ModelClass, x_k: noo.Termvec, y_k: dat.Atom, j: int) -> float:
-#         return le.loglike_second_derivative_from_row(self, x_k, y_k, j)
-#
-#     def times(self, x_k: noo.Termvec) -> float:
-#         return self.floats().dot_product(x_k.floats())
-#
-#     def pretty_strings_with_introduction(self, tfs: noo.Transformers, intro: str) -> arr.Strings:
-#         result = arr.strings_singleton(intro)
-#         result.add('')
-#         result.add('where...')
-#         result.add('')
-#         result.append(self.pretty_strings(tfs))
-#         return result
-#
-#     def pretty_string_with_introduction(self, tfs: noo.Transformers, intro: str) -> str:
-#         return self.pretty_strings_with_introduction(tfs, intro).concatenate_fancy('', '\n', '')
-#
-#     def num_cols_in_z_matrix(self) -> int:
-#         return self.floats().len()
-#
-#     def pretty_strings(self, tfs: noo.Transformers) -> arr.Strings:
-#         return self.strings_array(tfs).pretty_strings()
-#
-#     def strings_array(self, tfs: noo.Transformers) -> arr.StringsArray:
-#         nns = tfs.noomnames()
-#         assert self.num_cols_in_z_matrix() == nns.len() + 1
-#         result = arr.strings_array_empty()
-#         cws = self.correct_accounting_for_transformers(tfs)
-#         nns_as_strings = arr.strings_singleton('constant').with_many(nns.strings())
-#         for nn_as_string, w in zip(nns_as_strings.range(), cws.range()):
-#             ss = arr.strings_empty()
-#             ss.add(f'w[{nn_as_string}]')
-#             ss.add('=')
-#             ss.add(f'{w}')
-#             result.add(ss)
-#         return result
-#
-#     def weight(self, i: int) -> float:
-#         return self.floats().float(i)
-#
-#     def premultiplied_by(self, tvs: noo.Termvecs) -> arr.Floats:
-#         return tvs.times(self.floats())
-#
-#     def deep_copy(self):  # returns WeightsArray
-#         fs = self.floats().deep_copy()
-#         assert isinstance(fs, arr.Floats)
-#         return weights_create(fs)
-#
-#     def penalty(self) -> float:
-#         return penalty_parameter * self.sum_squares()
-#
-#     def penalty_derivative(self, col: int) -> float:
-#         return penalty_parameter * 2 * self.weight(col)
-#
-#     def sum_squares(self) -> float:
-#         return self.floats().sum_squares()
-#
-#     def range(self) -> Iterator[float]:
-#         return self.m_weights.range()
-#
-#     def correct_accounting_for_transformers(self, tfs: noo.Transformers) -> Weights:
-#         # predict = c_old + sum_j wold_j * (x_j - lo_j)/width_j
-#         #
-#         # predict = c_new + sum_j w_new_j x_j
-#         #
-#         # c_new = c_old + sum_j wold_j (-lo_j) / width_j
-#         # w_new_j = wold_j/width_j
-#         c_old = self.weight(0)
-#         c_new = c_old
-#         j_to_lo = arr.floats_empty()
-#         j_to_width = arr.floats_empty()
-#
-#         for tf in tfs.range():
-#             for iv in tf.scaling_intervals().range():
-#                 j_to_lo.add(iv.lo())
-#                 j_to_width.add(iv.width())
-#
-#         j_to_wold = self.floats().without_leftmost_element()
-#         j_to_w_new = arr.floats_empty()
-#
-#         for wold, lo, width in zip(j_to_wold.range(), j_to_lo.range(), j_to_width.range()):
-#             j_to_w_new.add(wold / width)
-#             c_new -= wold * lo / width
-#
-#         result = arr.floats_singleton(c_new)
-#         result.append(j_to_w_new)
-#
-#         assert result.len() == self.num_cols_in_z_matrix()
-#
-#         return weights_create(result)
-#
-
 class FloaterClass(ABC):
     @abstractmethod
     def assert_ok(self):
         pass
 
     @abstractmethod
-    def train_from_named_column(self, inputs: noo.NamedFloatRecords, output: dat.NamedColumn) -> Floater:
+    def train(self, inputs: noo.FloatRecords, output: dat.Column) -> Floater:
         pass
 
     @abstractmethod
@@ -218,36 +88,37 @@ class FloaterClass(ABC):
 
 class ModelFloater(Model):
     def assert_ok(self):
-        assert isinstance(self.m_transformers, noo.Transformers)
-        assert isinstance(self.m_output_description, dat.ColumnDescription)
-        self.m_output_description.assert_ok()
+        assert isinstance(self.m_transformer_description, noo.Transformers)
+        self.m_transformer_description.assert_ok()
         assert isinstance(self.m_floater, Floater)
         self.m_floater.assert_ok()
 
     def pretty_string(self) -> str:
-        return self.floater().pretty_string(self.transformers().names(), self.output_description())
+        return self.floater().pretty_string(self.transformer_description())
 
     def predict_from_record(self, rec: dat.Record) -> dis.Distribution:
-        fr = self.transformers().float_record_from_record(rec)
-        return self.floater().predict(fr)
+        fr = self.input_transformers().float_record_from_record(rec)
+        return self.floater().predict_from_float_record(fr)
 
     def prediction_component_strings(self) -> arr.Strings:
-        return self.floater().prediction_component_strings()
+        return self.floater().prediction_component_strings(self.output_description())
 
-    def __init__(self, tfs: noo.Transformers, output: dat.ColumnDescription, fl: Floater):
-        self.m_transformers = tfs
-        self.m_output_description = output
+    def __init__(self, td: noo.TransformerDescription, fl: Floater):
+        self.m_transformer_description = td
         self.m_floater = fl
         self.assert_ok()
 
     def floater(self) -> Floater:
         return self.m_floater
 
-    def transformers(self) -> noo.Transformers:
-        return self.m_transformers
+    def input_transformers(self) -> noo.Transformers:
+        return self.transformer_description().input_transformers()
 
     def output_description(self) -> dat.ColumnDescription:
-        return self.m_output_description
+        return self.transformer_description().output_description()
+
+    def transformer_description(self) -> noo.TransformerDescription:
+        return self.m_transformer_description
 
 
 class Floater(ABC):
@@ -256,20 +127,20 @@ class Floater(ABC):
         pass
 
     @abstractmethod
-    def pretty_string(self, input_names: arr.Strings, output: dat.ColumnDescription):
+    def pretty_string(self, td: noo.TransformerDescription):
         pass
 
     @abstractmethod
-    def predict(self, fr: noo.FloatRecord) -> dis.Distribution:
+    def predict_from_float_record(self, fr: noo.FloatRecord) -> dis.Distribution:
         pass
 
     @abstractmethod
-    def prediction_component_strings(self) -> arr.Strings:
+    def prediction_component_strings(self, output: dat.ColumnDescription) -> arr.Strings:
         pass
 
 
-def model_from_floater(tfs: noo.Transformers, output: dat.ColumnDescription, fl: Floater) -> ModelFloater:
-    return ModelFloater(tfs, output, fl)
+def model_from_floater(td: noo.TransformerDescription, fl: Floater) -> ModelFloater:
+    return ModelFloater(td, fl)
 
 
 class ModelClassFloatsOnly(ModelClass):
@@ -280,10 +151,11 @@ class ModelClassFloatsOnly(ModelClass):
         self.m_transformers.assert_ok()
 
     def train_from_named_column(self, inputs: dat.Datset, output: dat.NamedColumn) -> Model:
-        tfs = self.transformers()
-        nfs = tfs.named_float_records_from_datset(inputs)
-        return model_from_floater(tfs, output.column_description(),
-                                  self.floater_class().train_from_named_column(nfs, output))
+        td = noo.transformer_description_from_datset(inputs, output)
+        nfs = td.input_transformers().named_float_records_from_datset(inputs)
+        fc = self.floater_class()
+        fl = fc.train(nfs.float_records(), output.column())
+        return model_from_floater(td, fl)
 
     def name_as_string(self) -> str:
         return self.floater_class().name_as_string()
