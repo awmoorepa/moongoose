@@ -22,6 +22,13 @@ def unit_tests():
     lin.unit_test()
 
 
+def quadratic_test():
+    ds = dat.datset_of_random_unit_floats('a',100)
+    ds.add_column_using_function('b','*','a','a')
+    ds.explain()
+    ds.show()
+
+
 def run():
     if bas.expensive_assertions:
         print("**** WARNING: Expensive Assertions switched on")
@@ -29,7 +36,8 @@ def run():
     unit_tests()
     # Use a breakpoint in the code line below to debug your script.
     print(f'Hello!')  # Press Ctrl+F8 to toggle the breakpoint.
-    a = dat.load("cycle.csv")
+    quadratic_test()
+    a = dat.load("apple.csv")
     print('loaded successfully!')
     a.assert_ok()
     a.explain()
@@ -42,7 +50,7 @@ def run():
     #    inputs = a.without(output).without(a.subset('name', 'date'))
     inputs = a.subset('ascent')
     assert isinstance(inputs, dat.Datset)
-    mod = lin.model_class_glm(dat.Coltype.bools).train(inputs, output)
+    mod = lin.model_class_glm(1).train(inputs, output)
     assert isinstance(mod, lea.Model)
     mod.explain()
 
@@ -55,7 +63,7 @@ def run():
     b_inputs = a.subset('ascent')
     b_output = a.subset('energy')
     assert isinstance(b_output, dat.Datset)
-    mod = lin.model_class_glm(dat.Coltype.cats).train(b_inputs, b_output)
+    mod = lin.model_class_glm(1).train(b_inputs, b_output)
     assert isinstance(mod, lea.Model)
     plo.show_model(mod, b_inputs, b_output)
 
@@ -67,7 +75,7 @@ def run():
     c_train_out = c_train.subset('energy')
     c_test_in = c_test.subset('ascent')
 
-    mod = lin.model_class_glm(dat.Coltype.cats).train(c_train_in, c_train_out)
+    mod = lin.model_class_glm(1).train(c_train_in, c_train_out)
     assert isinstance(mod, lea.Model)
 
     d = mod.batch_predict(c_test_in)

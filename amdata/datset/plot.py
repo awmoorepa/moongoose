@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import List, Iterator, Tuple
 
 import matplotlib.pyplot as plt
@@ -150,8 +152,7 @@ class Catvec:
     def valnames(self) -> dat.Valnames:
         return self.cats().valnames()
 
-    def frequencies_with(self,
-                         other) -> arr.Imat:  # other is type catvec. result[i,j] = count how often self is value i and other is value j
+    def frequencies_with(self, other: Catvec) -> arr.Imat:
         assert isinstance(other, Catvec)
         result = arr.row_indexed_imat_of_zeroes(self.num_values(), other.num_values())
 
@@ -266,9 +267,9 @@ def show_ffc(x: Floatvec, y: Floatvec, z: Catvec):
     plt.show()
 
 
-def linear_combination(colos: geo.Colors, fs: arr.Floats) -> geo.Color:
+def linear_combination(cls: geo.Colors, fs: arr.Floats) -> geo.Color:
     result = geo.black()
-    for colo, f in zip(colos.range(), fs.range()):
+    for colo, f in zip(cls.range(), fs.range()):
         result = result.plus(colo.times(f))
     return result
 
@@ -277,9 +278,9 @@ def show_model_ffc(mod: lea.Model, x: Floatvec, y: Floatvec, z: Catvec):
     fig, ax = plt.subplots()
     z_to_row_to_x = z.floats_array(x)
     z_to_row_to_y = z.floats_array(y)
-    colos = geo.color_cycle(z.num_values())
+    cls = geo.color_cycle(z.num_values())
     print('not a dupe')
-    for xs, ys, label, colo in zip(z_to_row_to_x.range(), z_to_row_to_y.range(), z.names(), colos.range()):
+    for xs, ys, label, colo in zip(z_to_row_to_x.range(), z_to_row_to_y.range(), z.names(), cls.range()):
         ax.scatter(xs.list(), ys.list(), label=label, c=[colo.list()])
 
     xlo, xhi = ax.xaxis.get_data_interval()
@@ -296,7 +297,7 @@ def show_model_ffc(mod: lea.Model, x: Floatvec, y: Floatvec, z: Catvec):
             model_inputs = dat.record_from_floats(arr.floats_varargs(x_coord, y_coord))
             model_output = mod.predict_from_record(model_inputs)
             assert isinstance(model_output, dis.Multinomial)
-            rgb = linear_combination(colos, model_output.floats())
+            rgb = linear_combination(cls, model_output.floats())
             col_to_rgb.append(rgb.list())
         row_to_col_to_rgb.append(col_to_rgb)
 
@@ -347,19 +348,11 @@ def transformers_encoding(tfs: noo.Transformers) -> str:
     return result
 
 
-def coldescribe_encoding(cd: dat.ColumnDescription) -> str:
+def column_description_encoding(cd: dat.ColumnDescription) -> str:
     if cd.coltype() == dat.Coltype.floats:
         return 'f'
     else:
         return 'c'
-
-
-def modnames_encoding(mn: lea.ModelDescription) -> str:
-    return transformers_encoding(mn.inputs()) + coldescribe_encoding(mn.output())
-
-
-def model_encoding(mod: lea.Model) -> str:
-    return modnames_encoding(mod.model_description())
 
 
 def fvc_from_named_column(nc: dat.NamedColumn) -> Floatvec:
@@ -418,11 +411,6 @@ def show_model_fc(mod: lea.Model, x: Floatvec, y: Catvec):
 
 
 def compute_x_to_y_to_prob(input_valnames: dat.Valnames, mod: lea.Model) -> arr.Fmat:
-    tfs = mod.transformers()
-    assert tfs.len() == 1
-    ctf = tfs.transformer(0)
-    assert isinstance(ctf, noo.CatTransformer)
-
     x_to_y_to_prob = arr.floats_array_empty()
 
     for vn in input_valnames.range():
@@ -467,7 +455,7 @@ def show_model_cc(mod: lea.Model, x: Catvec, y: Catvec):
 def show_model(mod: lea.Model, inputs: dat.Datset, output: dat.Datset):
     assert output.num_cols() == 1
     assert output.num_records() == inputs.num_records()
-    mod_encoding = model_encoding(mod)
+    mod_encoding = datset_encoding(inputs.with_named_column(output.named_column(0)))
     train = inputs.with_named_column(output.named_column(0))
     assert isinstance(train, dat.Datset)
     ds_encoding = datset_encoding(train)

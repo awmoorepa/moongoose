@@ -237,6 +237,10 @@ def loosely_lte(x: float, y: float) -> bool:
     return x <= y or loosely_equals(x, y)
 
 
+def range_random(lo: float, hi: float) -> float:
+    return random.uniform(lo, hi)
+
+
 class Interval:
     def __init__(self, lo: float, hi: float):
         self.m_lo = lo
@@ -302,6 +306,9 @@ class Interval:
 
     def deep_copy(self) -> Interval:
         return interval_create(self.lo(), self.hi())
+
+    def random(self) -> float:
+        return range_random(self.lo(), self.hi())
 
 
 def interval_create(lo: float, hi: float) -> Interval:
@@ -445,3 +452,8 @@ def intervals_singleton(iv: Interval) -> Intervals:
     result = intervals_empty()
     result.add(iv)
     return result
+
+
+def interval_centered_at(center: float, width: float) -> Interval:
+    assert width >= 0
+    return interval_create(center - width / 2, center + width / 2)

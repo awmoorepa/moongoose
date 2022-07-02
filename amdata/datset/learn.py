@@ -88,7 +88,7 @@ class FloaterClass(ABC):
 
 class ModelFloater(Model):
     def assert_ok(self):
-        assert isinstance(self.m_transformer_description, noo.Transformers)
+        assert isinstance(self.m_transformer_description, noo.TransformerDescription)
         self.m_transformer_description.assert_ok()
         assert isinstance(self.m_floater, Floater)
         self.m_floater.assert_ok()
@@ -143,12 +143,10 @@ def model_from_floater(td: noo.TransformerDescription, fl: Floater) -> ModelFloa
     return ModelFloater(td, fl)
 
 
-class ModelClassFloatsOnly(ModelClass):
+class ModelClassFloater(ModelClass):
     def assert_ok(self):
         assert isinstance(self.m_floater_class, FloaterClass)
         self.m_floater_class.assert_ok()
-        assert isinstance(self.m_transformers, noo.Transformers)
-        self.m_transformers.assert_ok()
 
     def train_from_named_column(self, inputs: dat.Datset, output: dat.NamedColumn) -> Model:
         td = noo.transformer_description_from_datset(inputs, output)
@@ -160,13 +158,13 @@ class ModelClassFloatsOnly(ModelClass):
     def name_as_string(self) -> str:
         return self.floater_class().name_as_string()
 
-    def __init__(self, fc: FloaterClass, tfs: noo.Transformers):
+    def __init__(self, fc: FloaterClass):
         self.m_floater_class = fc
-        self.m_transformers = tfs
         self.assert_ok()
-
-    def transformers(self) -> noo.Transformers:
-        return self.m_transformers
 
     def floater_class(self) -> FloaterClass:
         return self.m_floater_class
+
+
+def model_class_from_floater_class(fc: FloaterClass) -> ModelClassFloater:
+    return ModelClassFloater(fc)

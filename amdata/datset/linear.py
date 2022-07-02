@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from abc import ABC, abstractmethod
-from typing import Iterator, Tuple
+from typing import Iterator, Tuple, List
 
 import datset.amarrays as arr
 import datset.ambasic as bas
@@ -26,6 +26,9 @@ class TermRecord:
 
     def floats(self) -> arr.Floats:
         return self.m_floats
+
+    def float(self, t_index: int) -> float:
+        return self.floats().float(t_index)
 
 
 class TermRecords:
@@ -57,118 +60,311 @@ def term_records_empty(n_terms: int) -> TermRecords:
     return TermRecords(n_terms)
 
 
-def product_of_float_record_elements(fr: noo.FloatRecord, fr_indexes: arr.Ints) -> float:
-    result = 1.0
-    for fr_index in fr_indexes.range():
-        result *= fr.float(fr_index)
-    return result
-
-
 def term_record_from_floats(fs: arr.Floats) -> TermRecord:
     return TermRecord(fs)
 
 
-class PolynomialStructure:
-    def __init__(self, n_fr_indexes: int):
-        self.m_num_fr_indexes = n_fr_indexes
-        self.m_t_index_to_fr_indexes = arr.ints_array_empty()
-        self.m_fr_indexes_to_t_index = {}
+class Factor:
+    def __init__(self, cov_id: int, power: int):
+        self.m_cov_id = cov_id
+        self.m_power = power
         self.assert_ok()
 
-    def pretty_weight_names(self, float_record_names: arr.Strings) -> arr.Strings:
+    def assert_ok(self):
+        assert isinstance(self.m_cov_id, int)
+        assert isinstance(self.m_power, int)
+        assert 0 <= self.m_cov_id < 1000000
+        assert 0 <= self.m_power < 100
+
+    def cov_id(self) -> int:
+        return self.m_cov_id
+
+    def power(self) -> int:
+        return self.m_power
+
+    def deep_copy(self) -> Factor:
+        return factor_create(self.cov_id(), self.power())
+
+    def evaluate(self, fr: noo.FloatRecord) -> float:
+        x = fr.float(self.cov_id())
+        result = 1.0
+        for i in range(self.power()):
+            result *= x
+        return result
+
+    def pretty_string(self, covariate_names: arr.Strings) -> str:
+        s = covariate_names.string(self.cov_id())
+        return s if self.power() == 1 else f'{s}^{self.power}'
+
+    def string(self) -> str:
+        s = f'x{self.cov_id()}'
+        return s if self.power() == 1 else f'{s}^{self.power()}'
+
+    def equals(self, other: Factor) -> bool:
+        return self.cov_id() == other.cov_id() and self.power() == other.power()
+
+
+def term_empty() -> Term:
+    return Term([])
+
+
+class Term:
+    def __init__(self, ps: List[Factor]):
+        self.m_list = ps
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_list, list)
+        for p in self.m_list:
+            assert isinstance(p, Factor)
+            p.assert_ok()
+        assert self.cov_ids().is_strictly_increasing()
+
+    def cov_ids(self) -> arr.Ints:
+        result = arr.ints_empty()
+        for p in self.range():
+            result.add(p.cov_id())
+        return result
+
+    def len(self) -> int:
+        return len(self.m_list)
+
+    def max_cov_id(self) -> int:
+        assert self.len() > 0
+        return self.last_factor().cov_id()
+
+    def last_factor(self) -> Factor:
+        assert self.len() > 0
+        return self.factor(self.len() - 1)
+
+    def factor(self, index: int) -> Factor:
+        assert 0 <= index < self.len()
+        return self.m_list[index]
+
+    def deep_copy(self) -> Term:
+        result = term_empty()
+        for f in self.range():
+            result.add(f.deep_copy())
+        return result
+
+    def range(self) -> Iterator[Factor]:
+        for p in self.m_list:
+            yield p
+
+    def evaluate(self, fr: noo.FloatRecord) -> float:
+        result = 1.0
+        for fct in self.range():
+            result *= fct.evaluate(fr)
+        return result
+
+    def pretty_string(self, covariate_names: arr.Strings) -> str:
+        if self.len() == 0:
+            return 'constant'
+        else:
+            result = arr.strings_empty()
+            for p in self.range():
+                result.add(p.pretty_string(covariate_names))
+            return result.concatenate_fancy('', ' * ', '')
+
+    def poly_accounting_for_intervals(self, cov_id_to_interval: bas.Intervals) -> Polynomial:
+        n_covariates = cov_id_to_interval.len()
+        result = polynomial_one(n_covariates)
+        for fct in self.range():
+            iv = cov_id_to_interval.interval(fct.cov_id())
+            transformed_version = polynomial_linear(n_covariates, -iv.lo() / iv.width(), 1.0 / iv.width(), fct.cov_id())
+            for i in range(fct.power()):
+                result = result.times_polynomial(transformed_version)
+        return result
+
+    def add(self, p: Factor):
+        if self.len() > 0:
+            assert self.max_cov_id() < p.cov_id()
+        self.m_list.append(p)
+
+    def times_term(self, other: Term) -> Term:
+        result = term_empty()
+        my_index = 0
+        other_index = 0
+        while True:
+            if my_index == self.len():
+                for i in range(other_index, other.len()):
+                    result.add(other.factor(i))
+                return result
+            elif other_index == other.len():
+                for i in range(my_index, self.len()):
+                    result.add(self.factor(i))
+                return result
+            else:
+                my_factor = self.factor(my_index)
+                other_factor = other.factor(other_index)
+                if my_factor.cov_id() < other_factor.cov_id():
+                    result.add(my_factor)
+                    my_index += 1
+                elif other_factor.cov_id() < my_factor.cov_id():
+                    result.add(other_factor)
+                    other_index += 1
+                else:
+                    new_power = my_factor.power() + other_factor.power()
+                    new_pow = factor_create(my_factor.cov_id(), new_power)
+                    result.add(new_pow)
+                    my_index += 1
+                    other_index += 1
+
+    def last_cov_id(self) -> int:
+        return self.last_factor().cov_id()
+
+    def times_cov_id(self, cov_id: int) -> Term:
+        result = term_empty()
+        already_added = False
+        for f in self.range():
+            if already_added or f.cov_id() < cov_id:
+                result.add(f)
+            elif f.cov_id() == cov_id:
+                result.add(factor_create(cov_id, f.power() + 1))
+                already_added = True
+            else:
+                result.add(factor_create(cov_id, 1))
+                result.add(f)
+                already_added = True
+
+        if not already_added:
+            result.add(factor_create(cov_id, 1))
+        result.assert_ok()
+        assert result.degree() == self.degree() + 1
+        return result
+
+    def degree(self) -> int:
+        result = 0
+        for fct in self.range():
+            result += fct.power()
+        return result
+
+    def string(self) -> str:
+        if self.len() == 0:
+            return '1'
+        return self.strings().concatenate_fancy('', ' * ', '')
+
+    def strings(self) -> arr.Strings:
         result = arr.strings_empty()
-        for fr_indexes in self.range_fr_indexes():
-            result.add(pretty_from_fr_indexes(fr_indexes, float_record_names))
+        for fct in self.range():
+            result.add(fct.string())
+        return result
+
+    def equals(self, other: Term) -> bool:
+        if self.len() != other.len():
+            return False
+
+        for f_me, f_other in zip(self.range(), other.range()):
+            if not f_me.equals(f_other):
+                return False
+
+        return True
+
+
+class Terms:
+    def __init__(self, li: List[Term]):
+        self.m_list = li
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_list, list)
+        for t in self.m_list:
+            assert isinstance(t, Term)
+            t.assert_ok()
+
+    def num_terms(self) -> int:
+        return len(self.m_list)
+
+    def range(self) -> Iterator[Term]:
+        for t in self.m_list:
+            yield t
+
+    def add(self, tm: Term):
+        self.m_list.append(tm)
+
+    def term(self, t_index: int) -> Term:
+        assert 0 <= t_index < self.num_terms()
+        return self.m_list[t_index]
+
+
+def terms_empty() -> Terms:
+    return Terms([])
+
+
+class PolynomialStructure:
+    def __init__(self, n_covariates: int):
+        self.m_num_covariates = n_covariates
+        self.m_t_index_to_term = terms_empty()
+        self.assert_ok()
+
+    def pretty_weight_names(self, covariate_names: arr.Strings) -> arr.Strings:
+        result = arr.strings_empty()
+        for tm in self.range_terms():
+            result.add(tm.pretty_string(covariate_names))
         return result
 
     def assert_ok(self):
-        assert isinstance(self.m_num_fr_indexes, int)
-        assert isinstance(self.m_fr_indexes_to_t_index, dict)
-        for fr_indexes, t_index in self.m_fr_indexes_to_t_index:
-            assert isinstance(fr_indexes, arr.Ints)
-            assert isinstance(t_index, int)
+        assert isinstance(self.m_num_covariates, int)
 
-        for t_index, fr_indexes in enumerate(self.m_t_index_to_fr_indexes.range()):
-            assert self.contains(fr_indexes)
-            assert self.t_index_from_fr_indexes(fr_indexes) == t_index
-            if fr_indexes.len() > 0:
-                assert fr_indexes.max() < self.m_num_fr_indexes
-            assert fr_indexes.is_weakly_increasing()
+        for t_index, t in enumerate(self.m_t_index_to_term.range()):
+            if t.len() > 0:
+                assert t.max_cov_id() < self.m_num_covariates
+            for t_index_prime in range(t_index + 1, self.m_t_index_to_term.num_terms()):
+                assert not t.equals(self.term(t_index_prime))
 
     def term_records_from_float_records(self, frs: noo.FloatRecords) -> TermRecords:
-        assert self.num_fr_indexes() == frs.num_cols()
+        assert self.num_covariates() == frs.num_cols()
         result = term_records_empty(self.num_terms())
         for fr in frs.range():
             result.add(self.term_record_from_float_record(fr))
         return result
 
-    def t_index_from_fr_indexes(self, fr_indexes: arr.Ints) -> int:
-        assert self.contains(fr_indexes)
-        return self.m_fr_indexes_to_t_index[fr_indexes]
+    def t_index_from_term(self, target: Term) -> Tuple[int, bool]:
+        for t_index, tm in enumerate(self.range_terms()):
+            if tm.equals(target):
+                assert self.term(t_index).equals(target)
+                return t_index, True
+        return -777, False
 
-    def contains(self, fr_indexes: arr.Ints) -> bool:
-        return fr_indexes in self.m_fr_indexes_to_t_index
-
-    def num_fr_indexes(self) -> int:
-        return self.m_num_fr_indexes
+    def num_covariates(self) -> int:
+        return self.m_num_covariates
 
     def num_terms(self) -> int:
-        return self.m_t_index_to_fr_indexes.len()
+        return self.m_t_index_to_term.num_terms()
 
     def term_record_from_float_record(self, fr: noo.FloatRecord) -> TermRecord:
         result = arr.floats_empty()
-        for fr_indexes in self.range_fr_indexes():
-            result.add(product_of_float_record_elements(fr, fr_indexes))
+        for tm in self.range_terms():
+            result.add(tm.evaluate(fr))
         return term_record_from_floats(result)
 
-    def range_fr_indexes(self) -> Iterator[arr.Ints]:
-        for fr_indexes in self.m_fr_indexes_to_t_index:
-            yield fr_indexes
+    def range_terms(self) -> Iterator[Term]:
+        return self.m_t_index_to_term.range()
 
-    def add_term(self, fr_indexes: arr.Ints):
-        assert 0 <= fr_indexes.min() <= fr_indexes.max() < self.num_fr_indexes()
-        t_index = self.num_terms()
-        c = fr_indexes.deep_copy()
-        self.m_fr_indexes_to_t_index[c] = t_index
-        self.m_t_index_to_fr_indexes.add(c)
+    def add_term(self, tm: Term):
+        if tm.len() > 0:
+            assert tm.max_cov_id() < self.num_covariates()
+        self.m_t_index_to_term.add(tm)
         if bas.expensive_assertions:
             self.assert_ok()
 
-    def fr_indexes(self, t_index: int) -> arr.Ints:
-        assert 0 <= t_index < self.num_terms()
-        return self.m_t_index_to_fr_indexes.ints(t_index)
+    def term(self, t_index: int) -> Term:
+        return self.m_t_index_to_term.term(t_index)
+
+    def deep_copy(self) -> PolynomialStructure:
+        result = polynomial_structure_empty(self.num_covariates())
+        for tm in self.range_terms():
+            result.add_term(tm.deep_copy())
+        return result
+
+    def contains(self, tm: Term) -> bool:
+        t_index, ok = self.t_index_from_term(tm)
+        return ok
 
 
-def pretty_from_fr_indexes(fr_indexes: arr.Ints, fr_index_to_name: arr.Strings) -> str:
-    pretty_name: str
-
-    if fr_indexes.len() == 0:
-        return 'constant'
-    else:
-        pretty_name_components = arr.strings_empty()
-        power = 0
-        for i in range(fr_indexes.len()):
-            fr_index = fr_indexes.int(i)
-            if i == 0:
-                power = 1
-            else:
-                previous_fr_index = fr_indexes.int(i - 1)
-                if fr_index == previous_fr_index:
-                    power += 1
-                else:
-                    base = fr_index_to_name.string(previous_fr_index)
-                    pretty_name_components.add(base if power == 1 else f'{base}^{power}')
-                    power = 1
-
-        base = fr_index_to_name.string(fr_indexes.last_element())
-        pretty_name_components.add(base if power == 1 else f'{base}^{power}')
-
-        return pretty_name_components.concatenate_fancy('', ' * ', '')
-
-
-def pretty_from_coefficient(coefficient: float, fr_indexes: arr.Ints, fr_index_to_name: arr.Strings) -> arr.Strings:
-    weight_name = f'w[{pretty_from_fr_indexes(fr_indexes, fr_index_to_name)}]'
-    return arr.strings_varargs(weight_name, bas.string_from_float(coefficient))
+def pretty_from_coefficient(coefficient: float, tm: Term, cov_id_to_name: arr.Strings) -> arr.Strings:
+    weight_name = f'w[{tm.pretty_string(cov_id_to_name)}]'
+    return arr.strings_varargs(weight_name, '=', bas.string_from_float(coefficient))
 
 
 class Polynomial:
@@ -184,26 +380,22 @@ class Polynomial:
         self.m_t_index_to_coefficient.assert_ok()
         assert self.m_poly_structure.num_terms() == self.m_t_index_to_coefficient.len()
 
-    def account_for_transformer_intervals(self, fr_index_to_interval: bas.Intervals) -> Polynomial:
-        result = polynomial_with_no_terms(fr_index_to_interval.len())
-        for coefficient, fr_indexes in zip(self.range_coefficients(), self.range_fr_indexes()):
-            p = poly_accounting_for_intervals(fr_indexes, fr_index_to_interval)
-            p.multiply_by(coefficient)
-            result.increment(p)
+    def account_for_transformer_intervals(self, cov_id_to_interval: bas.Intervals) -> Polynomial:
+        result = polynomial_with_no_terms(cov_id_to_interval.len())
+        for coefficient, tm in zip(self.range_coefficients(), self.range_terms()):
+            p = tm.poly_accounting_for_intervals(cov_id_to_interval)
+            result = result.plus(p.times_scalar(coefficient))
+        result.assert_ok()
         return result
 
-    def t_index_from_fr_indexes(self, fr_indexes: arr.Ints) -> int:
-        assert fr_indexes.is_weakly_increasing()
-        for t_index, fis in enumerate(self.range_fr_indexes()):
-            if fis.equals(fr_indexes):
-                return t_index
-        bas.my_error('fr_indexes not found')
+    def t_index_from_term(self, tm: Term) -> Tuple[int, bool]:
+        return self.polynomial_structure().t_index_from_term(tm)
 
-    def range_fr_indexes(self) -> Iterator[arr.Ints]:
-        return self.polynomial_structure().range_fr_indexes()
+    def range_terms(self) -> Iterator[Term]:
+        return self.polynomial_structure().range_terms()
 
-    def add_term(self, coefficient: float, fr_indexes: arr.Ints):
-        self.polynomial_structure().add_term(fr_indexes)
+    def add_term(self, coefficient: float, tm: Term):
+        self.polynomial_structure().add_term(tm)
         self.m_t_index_to_coefficient.add(coefficient)
 
     def polynomial_structure(self) -> PolynomialStructure:
@@ -215,44 +407,114 @@ class Polynomial:
     def coefficients(self) -> arr.Floats:
         return self.m_t_index_to_coefficient
 
-    def increment(self, other: Polynomial):
-        for fr_indexes, coefficient in zip(other.range_fr_indexes(), other.range_coefficients()):
-            t_index = self.t_index_from_fr_indexes(fr_indexes)
-            self.m_t_index_to_coefficient.increment(t_index, coefficient)
+    def plus(self, other: Polynomial) -> Polynomial:
+        result = self.deep_copy()
+        for c, t in zip(other.range_coefficients(), other.range_terms()):
+            result_t_index, ok = result.t_index_from_term(t)
+            if ok:
+                result.increment_term(result_t_index, c)
+            else:
+                result.add_term(c, t)
+        return result
 
-    def multiply_by(self, scale: float):
-        self.m_t_index_to_coefficient.multiply_by(scale)
+    def times_scalar(self, scale: float) -> Polynomial:
+        return polynomial_create(self.polynomial_structure(), self.coefficients().times_scalar(scale))
+
+    def increment_coefficient(self, t_index, coefficient):
+        self.m_t_index_to_coefficient.increment(t_index, coefficient)
+
+    def times_polynomial(self, other: Polynomial) -> Polynomial:
+        result = polynomial_with_no_terms(self.num_covariates())
+        for my_coefficient, my_term in zip(self.range_coefficients(), self.range_terms()):
+            result = result.plus(other.times_term(my_term).times_scalar(my_coefficient))
+        result.assert_ok()
+        return result
+
+    def deep_copy(self) -> Polynomial:
+        return polynomial_create(self.polynomial_structure().deep_copy(), self.coefficients().deep_copy())
+
+    def increment_term(self, t_index: int, delta_coefficient: float):
+        self.m_t_index_to_coefficient.increment(t_index, delta_coefficient)
+
+    def times_term(self, tm: Term) -> Polynomial:
+        result = polynomial_with_no_terms(self.num_covariates())
+        for c, t in zip(self.range_coefficients(), self.range_terms()):
+            result.add_term(c, tm.times_term(t))
+        return result
+
+    def num_covariates(self) -> int:
+        return self.polynomial_structure().num_covariates()
+
+    def pretty_string(self, covariate_names: arr.Strings) -> str:
+        return self.pretty_strings(covariate_names).concatenate_fancy('', '\n', '')
+
+    def pretty_strings(self, covariate_names: arr.Strings) -> arr.Strings:
+        return self.pretty_strings_array(covariate_names).pretty_strings()
+
+    def pretty_strings_array(self, covariate_names: arr.Strings) -> arr.StringsArray:
+        coefficient_strings = self.coefficients().strings()
+        term_strings = self.polynomial_structure().pretty_weight_names(covariate_names)
+        assert coefficient_strings.len() == term_strings.len()
+        result = arr.strings_array_empty()
+        for t_index in range(coefficient_strings.len()):
+            c = coefficient_strings.string(t_index)
+            t = term_strings.string(t_index)
+
+            possible_times = '*' if self.polynomial_structure().term(t_index).len() > 0 else ''
+            possible_term = t if self.polynomial_structure().term(t_index).len() > 0 else ''
+            possible_plus = '+' if t_index < self.num_terms()-1 else ''
+            result.add(arr.strings_varargs(c, possible_times, possible_term, possible_plus))
+        return result
+
+    def string(self) -> str:
+        return self.strings().concatenate_fancy('', ' + ', '')
+
+    def strings(self) -> arr.Strings:
+        result = arr.strings_empty()
+        for c, t in zip(self.range_coefficients(), self.range_terms()):
+            if math.fabs(c) > 1e-8:
+                s = bas.string_from_float(c) if t.len() == 0 else f'{c} * {t.string()}'
+                result.add(s)
+        if result.len() == 0:
+            result.add('0')
+        return result
+
+    def num_terms(self) -> int:
+        return self.polynomial_structure().num_terms()
 
 
-def polynomial_with_no_terms(n_fr_indexes: int) -> Polynomial:
-    return polynomial_create(polynomial_structure_empty(n_fr_indexes), arr.floats_empty())
+def polynomial_with_no_terms(n_covariates: int) -> Polynomial:
+    return polynomial_create(polynomial_structure_empty(n_covariates), arr.floats_empty())
 
 
-def polynomial_linear(n_fr_indexes: int, constant: float, slope: float, fr_index: int) -> Polynomial:
-    result = polynomial_constant(n_fr_indexes, constant)
-    result.add_term(slope, arr.ints_singleton(fr_index))
+def term_with_single_power(p: Factor) -> Term:
+    result = term_empty()
+    result.add(p)
     return result
 
 
-def polynomial_constant(n_fr_indexes, c: float) -> Polynomial:
-    result = polynomial_with_no_terms(n_fr_indexes)
-    result.add_term(c, arr.ints_empty())
+def factor_create(cov_id: int, power: int) -> Factor:
+    return Factor(cov_id, power)
+
+
+def term_with_single_linear_factor(cov_id: int) -> Term:
+    return term_with_single_power(factor_create(cov_id, 1))
+
+
+def polynomial_linear(n_covariates: int, constant_coefficient: float, slope: float, cov_id: int) -> Polynomial:
+    result = polynomial_constant(n_covariates, constant_coefficient)
+    result.add_term(slope, term_with_single_linear_factor(cov_id))
     return result
 
 
-def polynomial_one(n_fr_indexes: int) -> Polynomial:
-    return polynomial_constant(n_fr_indexes, 1.0)
-
-
-def poly_accounting_for_intervals(fr_indexes: arr.Ints, fr_index_to_interval: bas.Intervals) -> Polynomial:
-    n_fr_indexes = fr_index_to_interval.len()
-    result = polynomial_one(n_fr_indexes)
-    for fr_index in fr_indexes.range():
-        iv = fr_index_to_interval.interval(fr_index)
-        # multiply result by transformed version of this fr_index
-        transformed_version = polynomial_linear(n_fr_indexes, -iv.lo() / iv.width(), 1.0 / iv.width(), fr_index)
-        result = result.times(transformed_version)
+def polynomial_constant(n_covariates, c: float) -> Polynomial:
+    result = polynomial_with_no_terms(n_covariates)
+    result.add_term(c, term_empty())
     return result
+
+
+def polynomial_one(n_covariates: int) -> Polynomial:
+    return polynomial_constant(n_covariates, 1.0)
 
 
 def floater_glm_create(ps: PolynomialStructure, ws: GenWeights) -> FloaterGlm:
@@ -280,8 +542,12 @@ class FloaterClassGlm(lea.FloaterClass):
         return self.m_polynomial_degree
 
 
-def model_class_glm(polynomial_degree: int) -> FloaterClassGlm:
+def floater_class_glm(polynomial_degree: int) -> FloaterClassGlm:
     return FloaterClassGlm(polynomial_degree)
+
+
+def model_class_glm(polynomial_degree: int) -> lea.ModelClassFloater:
+    return lea.model_class_from_floater_class(floater_class_glm(polynomial_degree))
 
 
 def polynomial_create(ps: PolynomialStructure, coefficients: arr.Floats) -> Polynomial:
@@ -300,6 +566,7 @@ class FloaterGlm(lea.Floater):
     def pretty_strings(self, td: noo.TransformerDescription) -> arr.Strings:
         intro = self.gen_weights().pretty_strings_intro(td.output_description())
         undecorated = self.gen_weights().pretty_weight_names(self.polynomial_structure(), td)
+        assert isinstance(undecorated, arr.Strings)
         decorated = undecorated.decorate('w[', ']')
         weight_values = self.gen_weights().weight_values(self.polynomial_structure(), td.input_intervals())
         many_rows = arr.strings_array_empty()
@@ -361,21 +628,21 @@ def gen_weights_from_training(inputs: TermRecords, output: dat.Column) -> GenWei
     return start_weights.train(inputs, output)
 
 
-def polynomial_structure_empty(n_fr_indexes: int) -> PolynomialStructure:
-    return PolynomialStructure(n_fr_indexes)
+def polynomial_structure_empty(n_covariates: int) -> PolynomialStructure:
+    return PolynomialStructure(n_covariates)
 
 
 class PolyDataBuilder:
-    def __init__(self, n_fr_indexes: int):
-        self.m_poly_structure = polynomial_structure_empty(n_fr_indexes)
+    def __init__(self, n_covariates: int):
+        self.m_poly_structure = polynomial_structure_empty(n_covariates)
         self.m_t_index_to_column = arr.floats_array_empty()
         self.assert_ok()
 
     def column(self, t_index: int) -> arr.Floats:
         return self.m_t_index_to_column.floats(t_index)
 
-    def fr_indexes(self, t_index) -> arr.Ints:
-        return self.polynomial_structure().fr_indexes(t_index)
+    def term(self, t_index) -> Term:
+        return self.polynomial_structure().term(t_index)
 
     def columns(self) -> arr.FloatsArray:
         return self.m_t_index_to_column
@@ -383,15 +650,15 @@ class PolyDataBuilder:
     def polynomial_structure(self) -> PolynomialStructure:
         return self.m_poly_structure
 
-    def add_term(self, column: arr.Floats, fr_indexes: arr.Ints):
-        self.m_poly_structure.add_term(fr_indexes)
+    def add_term(self, column: arr.Floats, tm: Term):
+        self.m_poly_structure.add_term(tm)
         self.m_t_index_to_column.add(column)
 
     def num_terms(self) -> int:
         return self.m_t_index_to_column.len()
 
-    def contains_fr_indexes(self, fr_indexes: arr.Ints) -> bool:
-        return self.polynomial_structure().contains(fr_indexes)
+    def contains_term(self, tm: Term) -> bool:
+        return self.polynomial_structure().contains(tm)
 
     def assert_ok(self):
         pass
@@ -417,8 +684,8 @@ class PolyData:
         return self.m_polynomial_structure
 
 
-def poly_data_builder_empty(n_fr_indexes: int) -> PolyDataBuilder:
-    return PolyDataBuilder(n_fr_indexes)
+def poly_data_builder_empty(n_covariates: int) -> PolyDataBuilder:
+    return PolyDataBuilder(n_covariates)
 
 
 def term_records_from_columns(t_index_to_column: arr.FloatsArray) -> TermRecords:
@@ -443,25 +710,25 @@ def poly_data_from_poly_data_builder(pd: PolyDataBuilder) -> PolyData:
 
 
 def poly_data_from_float_records(frs: noo.FloatRecords, max_degree: int) -> PolyData:
+    assert isinstance(frs, noo.FloatRecords)
     pdb = poly_data_builder_empty(frs.num_cols())
-    pdb.add_term(arr.floats_all_constant(frs.num_rows(), 1.0), arr.ints_empty())
+    pdb.add_term(arr.floats_all_constant(frs.num_rows(), 1.0), term_empty())
     prev_t_indexes = arr.ints_singleton(0)
     for degree in range(1, max_degree + 1):
         new_t_indexes = arr.ints_empty()
         assert isinstance(prev_t_indexes, arr.Ints)
         for t_index in prev_t_indexes.range():
             previous_column = pdb.column(t_index)
-            fr_indexes = pdb.fr_indexes(t_index)
-            first_available_new_fr_index = 0 if fr_indexes.len == 0 else fr_indexes.last_element()
-            for fr_index in range(first_available_new_fr_index, frs.num_cols()):
-                proposed_new_column = previous_column.map_product_with(frs.column_as_floats(t_index))
+            tm = pdb.term(t_index)
+            first_available_new_cov_id = 0 if tm.len() == 0 else tm.last_cov_id()
+            for cov_id in range(first_available_new_cov_id, frs.num_cols()):
+                proposed_new_column = previous_column.map_product_with(frs.column_as_floats(cov_id))
                 if not proposed_new_column.is_loosely_constant():
                     new_t_index = pdb.num_terms()
-                    new_fr_indexes = fr_indexes.copied_with_one_element_added(fr_index)
-                    assert new_fr_indexes.len() == degree
-                    assert new_fr_indexes.is_weakly_increasing()
-                    assert not pdb.contains_fr_indexes(new_fr_indexes)
-                    pdb.add_term(proposed_new_column, new_fr_indexes)
+                    new_term = tm.times_cov_id(cov_id)
+                    assert new_term.degree() == degree
+                    assert not pdb.contains_term(new_term)
+                    pdb.add_term(proposed_new_column, new_term)
                     new_t_indexes.add(new_t_index)
         prev_t_indexes = new_t_indexes
         assert isinstance(prev_t_indexes, arr.Ints)
@@ -533,7 +800,6 @@ class GenWeights(ABC):
                 ws2.increment(weight_index, h_star)
                 ll_new2 = ws2.loglike(inputs, output)
                 if ll_new2 > ll:
-                    print(f"it's worth incrementing weight_index {weight_index} by {h_star} (delta_ll={ll_new2 - ll})")
                     ws = ws2
                     ll = ll_new2
 
@@ -552,6 +818,7 @@ class GenWeights(ABC):
     def loglike_derivative(self, inputs: TermRecords, output: dat.Column, weight_index: int) -> float:
         result = 0.0
         for k, x_k in enumerate(inputs.range()):
+            assert isinstance(x_k, TermRecord)
             result += self.loglike_derivative_from_row(x_k, output, k, weight_index)
         return result - self.penalty_derivative(weight_index)
 
@@ -622,8 +889,8 @@ class GenWeightsLogistic(GenWeights):
     def num_weight_indexes(self):
         return self.floats().len()
 
-    def pretty_weight_names(self, ps: PolynomialStructure, tfs: noo.Transformers) -> arr.Strings:
-        pass
+    def pretty_weight_names(self, ps: PolynomialStructure, td: noo.TransformerDescription) -> arr.Strings:
+        return ps.pretty_weight_names(td.covariate_names())
 
     def increment(self, weight_index: int, delta: float):
         self.m_weight_index_to_floats.increment(weight_index, delta)
@@ -634,8 +901,8 @@ class GenWeightsLogistic(GenWeights):
     def num_weights(self) -> int:
         return self.m_weight_index_to_floats.len()
 
-    def predict_from_term_record(self, tv: noo.FloatRecord) -> dis.Distribution:
-        beta_x = self.floats().dot_product(tv.floats())
+    def predict_from_term_record(self, tr: TermRecord) -> dis.Distribution:
+        beta_x = self.floats().dot_product(tr.floats())
         ez = math.exp(beta_x)
         p = ez / (1 + ez)
         return dis.binomial_create(p)
@@ -643,7 +910,7 @@ class GenWeightsLogistic(GenWeights):
     def weight(self, weight_index: int) -> float:
         return self.floats().float(weight_index)
 
-    def loglike_derivative_from_row(self, x_k: noo.FloatRecord, co: dat.Column, row: int, weight_index: int) -> float:
+    def loglike_derivative_from_row(self, x_k: TermRecord, co: dat.Column, row: int, weight_index: int) -> float:
         assert isinstance(co, dat.ColumnBools)
         q_k = q_from_y(co.bool(row))
         beta_x = self.floats().dot_product(x_k.floats())
@@ -670,7 +937,7 @@ class GenWeightsLogistic(GenWeights):
     def assert_ok(self):
         assert isinstance(self.m_weight_index_to_floats, arr.Floats)
 
-    def loglike_2nd_derivative_from_row(self, x_k: noo.FloatRecord, co: dat.Column, row: int, wx: int) -> float:
+    def loglike_2nd_derivative_from_row(self, x_k: TermRecord, co: dat.Column, row: int, wx: int) -> float:
         assert isinstance(co, dat.ColumnBools)
         qk = q_from_y(co.bool(row))  # note the qks get multiplied out so not really needed
         beta_x = self.floats().dot_product(x_k.floats())
@@ -682,7 +949,7 @@ class GenWeightsLogistic(GenWeights):
         x_kj = x_k.float(wx)
         return -x_kj * x_kj / (fk_of_beta * fk_of_minus_beta)
 
-    def loglike_from_row(self, x_k: noo.FloatRecord, co: dat.ColumnBools, row: int) -> float:
+    def loglike_from_row(self, x_k: TermRecord, co: dat.ColumnBools, row: int) -> float:
         assert isinstance(co, dat.ColumnBools)
         q = q_from_y(co.bool(row))
         q_beta_x = q * self.floats().dot_product(x_k.floats())
@@ -700,7 +967,7 @@ class GenWeightsLinear(GenWeights):
         return self.floats().len()
 
     def pretty_weight_names(self, ps: PolynomialStructure, td: noo.TransformerDescription) -> arr.Strings:
-        return ps.pretty_weight_names(td.float_record_names())
+        return ps.pretty_weight_names(td.covariate_names())
 
     def increment(self, weight_index: int, delta: float):
         self.m_weight_index_to_float.increment(weight_index, delta)
@@ -717,14 +984,14 @@ class GenWeightsLinear(GenWeights):
         assert isinstance(self.m_sdev, float)
         assert self.m_sdev > 0.0
 
-    def predict_from_term_record(self, tv: noo.FloatRecord) -> dis.Distribution:
+    def predict_from_term_record(self, tv: TermRecord) -> dis.Distribution:
         beta_x = self.floats().dot_product(tv.floats())
         return dis.gaussian_create(beta_x, self.sdev())
 
     def weight(self, weight_index: int) -> float:
         return self.floats().float(weight_index)
 
-    def loglike_2nd_derivative_from_row(self, x_k: noo.FloatRecord, co: dat.Column, row: int,
+    def loglike_2nd_derivative_from_row(self, x_k: TermRecord, co: dat.Column, row: int,
                                         weight_index: int) -> float:
         x_kj = x_k.float(weight_index)
         return -x_kj * x_kj
@@ -748,7 +1015,7 @@ class GenWeightsLinear(GenWeights):
         result.add('sdev')
         return result
 
-    def loglike_from_row(self, x_k: noo.FloatRecord, co: dat.Column, row: int) -> float:
+    def loglike_from_row(self, x_k: TermRecord, co: dat.Column, row: int) -> float:
         assert isinstance(co, dat.ColumnFloats)
         correct = co.float(row)
         assert isinstance(correct, float)
@@ -757,7 +1024,7 @@ class GenWeightsLinear(GenWeights):
         delta = correct - beta_x
         return -0.5 * delta * delta - bas.log_root_two_pi
 
-    def loglike_derivative_from_row(self, x_k: noo.FloatRecord, co: dat.Column, row: int, weight_index: int) -> float:
+    def loglike_derivative_from_row(self, x_k: TermRecord, co: dat.Column, row: int, weight_index: int) -> float:
         assert isinstance(co, dat.ColumnFloats)
         return x_k.float(weight_index) * (co.float(row) - self.floats().dot_product(x_k.floats()))
 
@@ -779,7 +1046,7 @@ class GenWeightsMultinomial(GenWeights):
         return result
 
     def pretty_weight_names(self, ps: PolynomialStructure, td: noo.TransformerDescription) -> arr.Strings:
-        fr_names = td.float_record_names()
+        fr_names = td.covariate_names()
         result = arr.strings_empty()
         for valname, weights in zip(td.output_description().valnames().range(), self.fmat().range_rows()):
             undecorated = ps.pretty_weight_names(fr_names)
@@ -805,19 +1072,19 @@ class GenWeightsMultinomial(GenWeights):
         assert fm.num_rows() > 0
         assert fm.row(0).loosely_equals(arr.floats_all_zero(fm.num_cols()))
 
-    def eki(self, z: noo.FloatRecord, i: int) -> float:
+    def eki(self, z: TermRecord, i: int) -> float:
         return math.exp(self.qki(z, i))
 
-    def qki(self, x_k: noo.FloatRecord, i: int) -> float:
+    def qki(self, x_k: TermRecord, i: int) -> float:
         return self.floats_from_value(i).dot_product(x_k.floats())
 
-    def sk(self, z: noo.FloatRecord) -> float:
+    def sk(self, z: TermRecord) -> float:
         result = 0
         for i in range(self.num_values()):
             result += self.eki(z, i)
         return result
 
-    def predict_from_term_record(self, tv: noo.FloatRecord) -> dis.Distribution:
+    def predict_from_term_record(self, tv: TermRecord) -> dis.Distribution:
         sk = self.sk(tv)
         probs = arr.floats_empty()
         for i in range(self.num_values()):
@@ -829,14 +1096,14 @@ class GenWeightsMultinomial(GenWeights):
         value, term_num = self.value_and_term_num_from_weight_index(weight_index)
         return self.floats_from_value(value).float(term_num)
 
-    def loglike_from_row(self, x_k: noo.FloatRecord, co: dat.Column, row: int) -> float:
+    def loglike_from_row(self, x_k: TermRecord, co: dat.Column, row: int) -> float:
         assert isinstance(co, dat.ColumnCats)
         i = co.cats().value(row)
         qki = self.qki(x_k, i)
         sk = self.sk(x_k)
         return qki - math.log(sk)
 
-    def loglike_derivative_from_row(self, x_k: noo.FloatRecord, co: dat.Column, row: int, weight_index: int) -> float:
+    def loglike_derivative_from_row(self, x_k: TermRecord, co: dat.Column, row: int, weight_index: int) -> float:
         weight_index_value, term_num = self.value_and_term_num_from_weight_index(weight_index)
         xkj = x_k.float(term_num)
         pik = self.eki(x_k, weight_index_value) / self.sk(x_k)
@@ -846,7 +1113,7 @@ class GenWeightsMultinomial(GenWeights):
             d_ll_k_by_dw_ij += xkj
         return d_ll_k_by_dw_ij
 
-    def loglike_2nd_derivative_from_row(self, x_k: noo.FloatRecord, co: dat.Column, row: int,
+    def loglike_2nd_derivative_from_row(self, x_k: TermRecord, co: dat.Column, row: int,
                                         weight_index: int) -> float:
         weight_index_value, term_num = self.value_and_term_num_from_weight_index(weight_index)
         xkj = x_k.float(term_num)
@@ -906,13 +1173,26 @@ def unit_test():
     s = """
     a,b,c,y
     0,0,0,50\n
-    10,1,0.1,51\n
+    10,1,0,51\n
     0,1,0,50\n
-    0,0,0.1,50"""
+    0,0,0,50"""
     ds, ok = dat.datset_from_multiline_string(s)
     assert ok
     output = ds.subset('y')
     inputs = ds.without_column(output.named_column(0))
     td = noo.transformer_description_from_datset(inputs, output.named_column(0))
     nfs = td.input_transformers().named_float_records_from_datset(inputs)
-    assert nfs.num_fr_indexes()
+    assert nfs.num_covariates() == inputs.num_cols()
+    fgc = floater_class_glm(1)
+    tfs = noo.transformers_from_datset(inputs)
+    inputs_as_named_float_records = tfs.named_float_records_from_datset(inputs)
+    fg = fgc.train(inputs_as_named_float_records.float_records(), output.column(0))
+    gw = fg.gen_weights()
+    assert isinstance(gw, GenWeightsLinear)
+    p = polynomial_create(fg.polynomial_structure(), gw.floats())
+    p2 = p.account_for_transformer_intervals(td.input_intervals())
+    p2.assert_ok()
+    print(f'accounted =\n{p2.pretty_string(td.covariate_names())}')
+    true_weights = arr.floats_varargs(50.0, 0.1, 0.0)
+    print(f'true_weights = {true_weights.pretty_string()}')
+    assert true_weights.distance_to(p2.coefficients()) < 0.3

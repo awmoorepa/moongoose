@@ -505,7 +505,7 @@ class Column(ABC):
         pass
 
     @abstractmethod
-    def coldescribe(self, cn: Colname) -> ColumnDescription:
+    def column_description(self, cn: Colname) -> ColumnDescription:
         pass
 
     def type_as_string(self) -> str:
@@ -568,7 +568,7 @@ class NamedColumn:
         return named_column_create(self.colname(), self.column().subset(row_indexes))
 
     def column_description(self):
-        return self.column().coldescribe(self.colname())
+        return self.column().column_description(self.colname())
 
     def coltype(self) -> Coltype:
         return self.column().coltype()
@@ -698,6 +698,26 @@ def datset_from_single_column(cn: Colname, co: Column) -> Datset:
 def column_descriptions_empty() -> ColumnDescriptions:
     return ColumnDescriptions([])
 
+class Operator:
+    def __init__(self,fun):
+        self.m_fun = fun
+        self.assert_ok()
+
+class OpSpec:
+    def __init__(self,cn:Colname,op:Operator,ds:Datset):
+        self.m_colname = cn
+        self.m_operator = op
+        self.m_datset = ds
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_colname,Colname)
+        self.m_colname.assert_ok()
+        assert isinstance(self.m_operator,Operator)
+        self.m_operator.assert_ok()
+        assert isinstance(self.m_datset,Datset)
+        self.m_datset.assert_ok()
+
 
 class Datset:
     def __init__(self, n_rows: int, ncs: List[NamedColumn]):  # n_rows must == col length
@@ -812,14 +832,21 @@ class Datset:
         cn = colname_from_string(colname_as_string)
         return self.colid_from_colname(cn)
 
-    def named_column_from_string(self, colname_as_string: str) -> NamedColumn:
+    def named_column_from_string_with_checks(self, colname_as_string: str) -> Tuple[NamedColumn,bool]:
         col, ok = self.colid_from_string(colname_as_string)
+        if ok:
+            return self.named_column(col),True
+        else:
+            return named_column_default(),False
+
+
+    def named_column_from_string(self, colname_as_string: str) -> NamedColumn:
+        nc, ok = self.named_column_from_string_with_checks(colname_as_string)
         if not ok:
             print(f'You requested column named: {colname_as_string}')
             print(f'But available column names are: {self.colnames().pretty_string()}')
             bas.my_error("named_column_from_string()")
-
-        return self.named_column(col)
+        return nc
 
     def without_column(self, exclude_me: NamedColumn):  # returns Datset
         return self.without_colname(exclude_me.colname())
@@ -847,6 +874,13 @@ class Datset:
     def range_columns(self) -> Iterator[Column]:
         for nc in self.range_named_columns():
             yield nc.column()
+
+    def subset_with_checks(self, *colnames_as_strings: str) -> Tuple[Datset,bas.Errmess]:
+        result = datset_empty(self.num_records())
+        for s in colnames_as_strings:
+            nc = self.named_column_from_string(s)
+            result.add(nc)
+        return result
 
     def subset(self, *colnames_as_strings: str) -> Datset:
         result = datset_empty(self.num_records())
@@ -933,6 +967,22 @@ class Datset:
         for nc in self.range_named_columns():
             result.add(nc.column_description())
         return result
+
+    def add_column_using_function(self, col_name:str, op_name:str, *params:str):
+        ops,em = self.opspec_create(col_name,op_name,*params)
+        em.abort_if_error()
+        nc,em = self.column_from_opspec(ops)
+        em.abort_if_error()
+        self.add(nc)
+
+    def opspec_create(self, new_name:str, op_name:str, *arg_names:str)->Tuple[OpSpec, bas.Errmess]:
+        cn = colname_from_string(new_name)
+        if self.contains_colname(cn):
+            return opspec_default(),bas.errmess_error(f'datset already has column called {new_name}')
+
+        ds = self.subset(*arg_names)
+
+
 
 
 def datset_empty(n_rows: int) -> Datset:
@@ -1162,20 +1212,20 @@ def colname_create(s: str) -> Colname:
     return Colname(s)
 
 
-def coldescribe_create(cn: Colname, ct: Coltype, vns: Valnames) -> ColumnDescription:
+def column_description_create(cn: Colname, ct: Coltype, vns: Valnames) -> ColumnDescription:
     return ColumnDescription(cn, ct, vns)
 
 
-def coldescribe_of_type_bools(cn: Colname) -> ColumnDescription:
-    return coldescribe_create(cn, Coltype.bools, valnames_empty())
+def column_description_of_type_bools(cn: Colname) -> ColumnDescription:
+    return column_description_create(cn, Coltype.bools, valnames_empty())
 
 
 class ColumnBools(Column):
     def coltype(self) -> Coltype:
         return Coltype.bools
 
-    def coldescribe(self, cn: Colname) -> ColumnDescription:
-        return coldescribe_of_type_bools(cn)
+    def column_description(self, cn: Colname) -> ColumnDescription:
+        return column_description_of_type_bools(cn)
 
     def __init__(self, bs: arr.Bools):
         self.m_bools = bs
@@ -1232,8 +1282,8 @@ def column_from_strings(ss: arr.Strings) -> Column:
     return column_from_cats(cats_from_strings(ss))
 
 
-def coldescribe_of_type_floats(cn: Colname) -> ColumnDescription:
-    return coldescribe_create(cn, Coltype.floats, valnames_empty())
+def column_description_of_type_floats(cn: Colname) -> ColumnDescription:
+    return column_description_create(cn, Coltype.floats, valnames_empty())
 
 
 def cats_from_discretized_floats(fs: arr.Floats, n_buckets: int) -> Cats:
@@ -1292,8 +1342,8 @@ class ColumnFloats(Column):
     def coltype(self) -> Coltype:
         return Coltype.floats
 
-    def coldescribe(self, cn: Colname) -> ColumnDescription:
-        return coldescribe_of_type_floats(cn)
+    def column_description(self, cn: Colname) -> ColumnDescription:
+        return column_description_of_type_floats(cn)
 
     def __init__(self, fs: arr.Floats):
         self.m_floats = fs
@@ -1336,16 +1386,16 @@ def column_from_floats(fs: arr.Floats) -> Column:
     return ColumnFloats(fs)
 
 
-def coldescribe_of_type_cats(cn: Colname, vns: Valnames) -> ColumnDescription:
-    return coldescribe_create(cn, Coltype.cats, vns)
+def column_description_of_type_cats(cn: Colname, vns: Valnames) -> ColumnDescription:
+    return column_description_create(cn, Coltype.cats, vns)
 
 
 class ColumnCats(Column):
     def coltype(self):
         return Coltype.cats
 
-    def coldescribe(self, cn: Colname) -> ColumnDescription:
-        return coldescribe_of_type_cats(cn, self.cats().valnames())
+    def column_description(self, cn: Colname) -> ColumnDescription:
+        return column_description_of_type_cats(cn, self.cats().valnames())
 
     def __init__(self, cs: Cats):
         self.m_cats = cs
@@ -1595,3 +1645,15 @@ class ColumnDescriptions:
     def range(self) -> Iterator[ColumnDescription]:
         for cd in self.m_list:
             yield cd
+
+
+def column_of_random_unit_floats(n_rows:int)->Column:
+    return column_from_floats(arr.floats_random_unit(n_rows))
+
+
+def named_column_of_random_unit_floats(name:str, n_rows:int)->NamedColumn:
+    return named_column_create(colname_create(name), column_of_random_unit_floats(n_rows))
+
+
+def datset_of_random_unit_floats(colname:str, n_rows:int)->Datset:
+    return datset_from_single_named_column(named_column_of_random_unit_floats(colname,n_rows))

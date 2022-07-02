@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Tuple, List, Iterator
 
 import datset.ambasic as bas
@@ -319,6 +320,22 @@ class Floats:
                 return False
         return True
 
+    def times_scalar(self, scale: float) -> Floats:
+        result = floats_empty()
+        for x in self.range():
+            result.add(x * scale)
+        return result
+
+    def distance_to(self, other: Floats) -> float:
+        return math.sqrt(self.distance_squared_to(other))
+
+    def distance_squared_to(self, other: Floats) -> float:
+        return self.minus(other).sum_squares()
+
+    def mean(self) -> float:
+        assert self.len() > 0
+        return self.sum() / self.len()
+
 
 class Namer:
     def __init__(self):
@@ -618,6 +635,14 @@ class Ints:
         result.add(i)
         return result
 
+    def is_strictly_increasing(self) -> bool:
+        if self.len() < 2:
+            return True
+        for i in range(self.len() - 1):
+            if self.int(i) >= self.int(i + 1):
+                return False
+        return True
+
 
 def indexes_of_sorted(li: list) -> Ints:
     pairs = zip(range(0, len(li)), li)
@@ -758,7 +783,7 @@ class Strings:
 
         return True
 
-    def with_many(self, other:Strings)->Strings:  # other type Strings, result type Strings
+    def with_many(self, other: Strings) -> Strings:  # other type Strings, result type Strings
         assert isinstance(other, Strings)
         result = strings_empty()
         for s in self.range():
@@ -841,6 +866,7 @@ class StringsArray:
         for ss in self.m_strings_array:
             yield ss
 
+
 def strings_array_empty() -> StringsArray:
     return StringsArray([])
 
@@ -894,7 +920,7 @@ def bools_from_strings(ss: Strings) -> Tuple[Bools, bool]:
     return result, True
 
 
-def floats_empty():
+def floats_empty() -> Floats:
     return Floats([])
 
 
@@ -1536,6 +1562,9 @@ class IntsArray:
             result.add(ins.strings())
         return result
 
+    def pretty_string(self) -> str:
+        return self.pretty_strings().concatenate_fancy('{', ',', '}')
+
 
 class RowIndexedImat:
     def __init__(self, n_cols: int):
@@ -1788,3 +1817,14 @@ def strings_array_varargs(*li: Strings) -> StringsArray:
         assert isinstance(ss, Strings)
         result.add(ss)
     return result
+
+
+def floats_random(n_rows:int, iv:bas.Interval)->Floats:
+    result = floats_empty()
+    for i in range(n_rows):
+        result.add(iv.random())
+    return result
+
+
+def floats_random_unit(n_rows:int)->Floats:
+    return floats_random(n_rows,bas.interval_unit())

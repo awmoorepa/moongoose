@@ -36,7 +36,7 @@ class NamedFloatRecords:
             result.add(dat.named_column_create(dat.colname_create(name), dat.column_from_floats(c)))
         return result
 
-    def num_fr_indexes(self) -> int:
+    def num_covariates(self) -> int:
         return self.m_col_to_name.len()
 
     def column_as_datset_column(self, c: int) -> dat.Column:
@@ -57,8 +57,8 @@ class NamedFloatRecords:
     def float_record(self, r: int) -> FloatRecord:
         return self.float_records().float_record(r)
 
-    def column_as_floats(self, fr_index: int) -> arr.Floats:
-        return self.float_records().column_as_floats(fr_index)
+    def column_as_floats(self, cov_id: int) -> arr.Floats:
+        return self.float_records().column_as_floats(cov_id)
 
     def names(self) -> arr.Strings:
         return self.m_col_to_name
@@ -196,12 +196,16 @@ class FloatTransformer(Transformer):
     def __init__(self, name: str, fs: arr.Floats):
         self.m_name = name
         self.m_interval = fs.extremes()
+        min_interval_width = 1e-3
+        if self.m_interval.width() < min_interval_width:
+            self.m_interval = bas.interval_centered_at(fs.mean(),min_interval_width)
         self.assert_ok()
 
     def assert_ok(self):
         assert isinstance(self.m_name, str)
         assert isinstance(self.m_interval, bas.Interval)
         self.m_interval.assert_ok()
+        assert self.m_interval.width() > 1e-10
 
     def name(self) -> str:
         return self.m_name
@@ -309,7 +313,7 @@ class Transformers:
     def add(self, tf: Transformer):
         self.m_transformers.append(tf)
 
-    def float_record_names(self) -> arr.Strings:
+    def covariate_names(self) -> arr.Strings:
         result = arr.strings_empty()
         for tf in self.range():
             result.append(tf.names())
@@ -323,9 +327,9 @@ class Transformers:
         return len(self.m_transformers)
 
     def named_float_records_from_datset(self, ds: dat.Datset) -> NamedFloatRecords:
-        nns = self.float_record_names()
-        n_fr_indexes = nns.len()
-        frs = float_records_empty(n_fr_indexes)
+        nns = self.covariate_names()
+        n_cov_ids = nns.len()
+        frs = float_records_empty(n_cov_ids)
         for row in ds.range_records():
             z = self.float_record_from_record(row)
             frs.add(z)
@@ -342,7 +346,7 @@ class Transformers:
         for a, tf in zip(row.range(), self.range()):
             fs = tf.transform_atom(a)
             result.append(fs)
-        return result
+        return float_record_create(result)
 
     def scaling_intervals(self) -> bas.Intervals:
         result = bas.intervals_empty()
@@ -420,11 +424,11 @@ def unit_test():
     blue,false\n
     yellow,true"""
 
-    ns_string = """constant,color_is_red,color_is_yellow,is_bright\n
-    1,1,0,1\n
-    1,0,0,0\n
-    1,0,0,0\n
-    1,0,1,1"""
+    ns_string = """color_is_red,color_is_yellow,is_bright\n
+    1,0,1\n
+    0,0,0\n
+    0,0,0\n
+    0,1,1"""
 
     ds, ds_errmess = dat.datset_from_multiline_string(ds_string)
 
@@ -436,7 +440,9 @@ def unit_test():
 
     print(f'ns_errmess = {ns_errmess.string()}')
     assert ns_errmess.is_ok()
+    print(f'ns =\n{ns.pretty_string()}')
     ns2 = noomset_from_datset(ds)
+    print(f'ns2 =\n{ns2.pretty_string()}')
 
     assert ns2.loosely_equals(ns)
 
@@ -456,8 +462,8 @@ class FloatRecord:
     def len(self) -> int:
         return self.m_floats.len()
 
-    def float(self, fr_index: int) -> float:
-        return self.m_floats.float(fr_index)
+    def float(self, cov_id: int) -> float:
+        return self.m_floats.float(cov_id)
 
     def loosely_equals(self, other: FloatRecord) -> bool:
         return self.floats().loosely_equals(other.floats())
@@ -536,7 +542,7 @@ class TransformerDescription:
         return self.m_output
 
     def float_record_names(self) -> arr.Strings:
-        return self.input_transformers().float_record_names()
+        return self.input_transformers().covariate_names()
 
     def input_intervals(self) -> bas.Intervals:
         return self.input_transformers().scaling_intervals()
@@ -546,6 +552,9 @@ class TransformerDescription:
         self.m_input.assert_ok()
         assert isinstance(self.m_output, dat.ColumnDescription)
         self.m_output.assert_ok()
+
+    def covariate_names(self) -> arr.Strings:
+        return self.input_transformers().covariate_names()
 
 
 def transformer_description_create(input_transformers: Transformers, output_description: dat.ColumnDescription):
