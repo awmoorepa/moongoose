@@ -42,6 +42,10 @@ class Errmess:
         else:
             return self.m_string
 
+    def abort_if_error(self):
+        if self.is_error():
+            my_error(self.string())
+
 
 def errmess_ok() -> Errmess:
     return Errmess(True, "")

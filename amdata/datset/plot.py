@@ -394,8 +394,16 @@ def show_model_fc(mod: lea.Model, x: Floatvec, y: Catvec):
 
     for x in xs.range():
         d = mod.predict_from_record(dat.record_singleton(dat.atom_from_float(x)))
-        assert isinstance(d, dis.Multinomial)
-        value_to_prob = d.floats()
+
+        if isinstance(d, dis.Multinomial):
+            value_to_prob = d.floats()
+        elif isinstance(d, dis.Binomial):
+            p = d.theta()
+            value_to_prob = arr.floats_varargs(1 - p, p)
+        else:
+            bas.my_error('bad output column for fc model')
+            value_to_prob = arr.floats_empty()
+
         for prob, row_to_prob in zip(value_to_prob.range(), value_to_row_to_prob.range()):
             row_to_prob.add(prob)
 

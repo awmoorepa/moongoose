@@ -198,7 +198,7 @@ class FloatTransformer(Transformer):
         self.m_interval = fs.extremes()
         min_interval_width = 1e-3
         if self.m_interval.width() < min_interval_width:
-            self.m_interval = bas.interval_centered_at(fs.mean(),min_interval_width)
+            self.m_interval = bas.interval_centered_at(fs.mean(), min_interval_width)
         self.assert_ok()
 
     def assert_ok(self):

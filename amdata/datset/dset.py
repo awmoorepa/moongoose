@@ -680,6 +680,10 @@ class Record:
         for a in self.m_atoms:
             yield a
 
+    def range_floats(self) -> Iterator[float]:
+        for a in self.range():
+            yield a.float()
+
 
 def record_empty() -> Record:
     return Record([])
@@ -698,30 +702,131 @@ def datset_from_single_column(cn: Colname, co: Column) -> Datset:
 def column_descriptions_empty() -> ColumnDescriptions:
     return ColumnDescriptions([])
 
-class Operator:
-    def __init__(self,fun):
-        self.m_fun = fun
-        self.assert_ok()
+
+class Operator(ABC):
+    def assert_ok(self):
+        pass  # nothing to do
+
+    @abstractmethod
+    def evaluate_record(self, rec: Record) -> Atom:
+        pass
+
+    def evaluate_columns(self, cs: Columns) -> Column:
+        result = record_empty()
+        for rec in cs.range_records():
+            a = self.evaluate_record(rec)
+            result.add(a)
+        return column_from_record(result)
+
 
 class OpSpec:
-    def __init__(self,cn:Colname,op:Operator,ds:Datset):
-        self.m_colname = cn
+    def __init__(self, op: Operator, cs: Columns):
         self.m_operator = op
-        self.m_datset = ds
+        self.m_columns = cs
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_colname,Colname)
-        self.m_colname.assert_ok()
-        assert isinstance(self.m_operator,Operator)
+        assert isinstance(self.m_operator, Operator)
         self.m_operator.assert_ok()
-        assert isinstance(self.m_datset,Datset)
-        self.m_datset.assert_ok()
+        assert isinstance(self.m_columns, Columns)
+        self.m_columns.assert_ok()
+
+    def evaluate(self) -> Column:
+        return self.operator().evaluate_columns(self.columns())
+
+    def operator(self) -> Operator:
+        return self.m_operator
+
+    def columns(self) -> Columns:
+        return self.m_columns
+
+
+class Columns:
+    def __init__(self, n_records: int, li: List[Column]):
+        self.m_num_records = n_records
+        self.m_list = li
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_list, list)
+        for c in self.m_list:
+            assert isinstance(c, Column)
+            c.assert_ok()
+            assert c.num_rows() == self.num_records()
+
+    def add(self, c: Column):
+        assert self.num_records() == c.num_rows()
+        self.m_list.append(c)
+
+    def range_records(self) -> Iterator[Record]:
+        for r in range(self.num_records()):
+            yield self.record(r)
+
+    def num_records(self) -> int:
+        return self.m_num_records
+
+    def record(self, row: int) -> Record:
+        result = record_empty()
+        for c in self.range_columns():
+            result.add(c.atom(row))
+        return result
+
+    def range_columns(self) -> Iterator[Column]:
+        for c in self.m_list:
+            yield c
+
+
+def opspec_create(op: Operator, cs: Columns) -> OpSpec:
+    return OpSpec(op, cs)
+
+
+class OperatorPlus(Operator):
+    def __init__(self):
+        pass
+
+    def evaluate_record(self, rec: Record) -> Atom:
+        result = 0.0
+        for x in rec.range_floats():
+            result += x
+        return atom_from_float(result)
+
+
+def columns_empty(n_records: int) -> Columns:
+    return Columns(n_records, [])
+
+
+def columns_default() -> Columns:
+    return columns_empty(0)
+
+
+def opspec_default() -> OpSpec:
+    return opspec_create(OperatorPlus(), columns_default())
+
+
+class OperatorTimes(Operator):
+    def evaluate_record(self, rec: Record) -> Atom:
+        result = 1.0
+        for a in rec.range_floats():
+            result *= a
+        return atom_from_float(result)
+
+
+def operator_from_op_name(op_name: str) -> Tuple[Operator, bool]:
+    if op_name == '+':
+        return OperatorPlus(), True
+    elif op_name == '*':
+        return OperatorTimes(), True
+    else:
+        return OperatorPlus(), False
+
+
+def named_column_from_bools(cn: Colname, bs: arr.Bools) -> NamedColumn:
+    return named_column_create(cn, column_from_bools(bs))
 
 
 class Datset:
-    def __init__(self, n_rows: int, ncs: List[NamedColumn]):  # n_rows must == col length
-        self.m_num_rows = n_rows
+    def __init__(self, n_records: int, ncs: List[NamedColumn]):  # n_records must == col length
+        self.m_num_rows = n_records
         self.m_named_columns = ncs
         self.assert_ok()
 
@@ -792,21 +897,6 @@ class Datset:
             ds.add(self.named_column(c))
         return ds
 
-    def subcols(self, *strs: str):  # returns Datset
-        cns = colnames_from_list_of_strings(*strs)
-        cis, ok = self.colids_from_colnames(cns)
-        assert ok
-        return self.subcols_from_ints(cis)
-
-    def colids_from_colnames(self, cns: Colnames) -> Tuple[arr.Ints, bool]:
-        result = arr.ints_empty()
-        for i in range(cns.len()):
-            i, ok = self.colid_from_colname(cns.colname(i))
-            if not ok:
-                return arr.ints_empty(), False
-            result.add(i)
-        return result, True
-
     def contains_colname(self, cn: Colname) -> bool:
         ci, ok = self.colid_from_colname(cn)
         return ok
@@ -828,25 +918,11 @@ class Datset:
     def atom(self, r: int, c: int) -> Atom:
         return self.column(c).atom(r)
 
-    def colid_from_string(self, colname_as_string: str) -> Tuple[int, bool]:
-        cn = colname_from_string(colname_as_string)
-        return self.colid_from_colname(cn)
-
-    def named_column_from_string_with_checks(self, colname_as_string: str) -> Tuple[NamedColumn,bool]:
-        col, ok = self.colid_from_string(colname_as_string)
-        if ok:
-            return self.named_column(col),True
-        else:
-            return named_column_default(),False
-
-
-    def named_column_from_string(self, colname_as_string: str) -> NamedColumn:
-        nc, ok = self.named_column_from_string_with_checks(colname_as_string)
-        if not ok:
-            print(f'You requested column named: {colname_as_string}')
-            print(f'But available column names are: {self.colnames().pretty_string()}')
-            bas.my_error("named_column_from_string()")
-        return nc
+    def named_column_from_colname(self, target: Colname) -> Tuple[NamedColumn, bool]:
+        for nc in self.range_named_columns():
+            if nc.colname().equals(target):
+                return nc, True
+        return named_column_default(), False
 
     def without_column(self, exclude_me: NamedColumn):  # returns Datset
         return self.without_colname(exclude_me.colname())
@@ -875,18 +951,23 @@ class Datset:
         for nc in self.range_named_columns():
             yield nc.column()
 
-    def subset_with_checks(self, *colnames_as_strings: str) -> Tuple[Datset,bas.Errmess]:
+    def subset_with_checks(self, cns: Colnames) -> Tuple[Datset, bas.Errmess]:
+        assert isinstance(cns, Colnames)
         result = datset_empty(self.num_records())
-        for s in colnames_as_strings:
-            nc = self.named_column_from_string(s)
+        for cn in cns.range():
+            nc, ok = self.named_column_from_colname(cn)
+            if not ok:
+                return datset_default(), bas.errmess_error(
+                    f'datset has columns {self.colnames().pretty_string()} and does not contain column named {cn.string()}')
+            if result.contains_colname(nc.colname()):
+                return datset_default(), bas.errmess_error(f'you cannot repeat column named {cn.string()}')
             result.add(nc)
-        return result
+        return result, bas.errmess_ok()
 
     def subset(self, *colnames_as_strings: str) -> Datset:
-        result = datset_empty(self.num_records())
-        for s in colnames_as_strings:
-            nc = self.named_column_from_string(s)
-            result.add(nc)
+        cns = colnames_from_list_of_strings(*colnames_as_strings)
+        result, em = self.subset_with_checks(cns)
+        em.abort_if_error()
         return result
 
     def column_is_floats(self, col: int) -> bool:
@@ -968,25 +1049,55 @@ class Datset:
             result.add(nc.column_description())
         return result
 
-    def add_column_using_function(self, col_name:str, op_name:str, *params:str):
-        ops,em = self.opspec_create(col_name,op_name,*params)
+    def add_column_using_function(self, col_name: str, op_name: str, cns: Colnames):
+        ops, em = self.opspec_from_op_name(op_name, cns)
         em.abort_if_error()
-        nc,em = self.column_from_opspec(ops)
-        em.abort_if_error()
-        self.add(nc)
+        self.add_column_using_opspec(colname_from_string(col_name), ops)
 
-    def opspec_create(self, new_name:str, op_name:str, *arg_names:str)->Tuple[OpSpec, bas.Errmess]:
-        cn = colname_from_string(new_name)
-        if self.contains_colname(cn):
-            return opspec_default(),bas.errmess_error(f'datset already has column called {new_name}')
+    def opspec_from_op_name(self, op_name: str, cns: Colnames) -> Tuple[OpSpec, bas.Errmess]:
+        cs, em = self.columns_from_colnames(cns)
+        if em.is_error():
+            return opspec_default(), em
+        op, ok = operator_from_op_name(op_name)
+        if not ok:
+            return opspec_default(), bas.errmess_error(f'No such operator as {op_name}')
 
-        ds = self.subset(*arg_names)
+        return opspec_create(op, cs), bas.errmess_ok()
+
+    def add_column_using_opspec(self, cn: Colname, ops: OpSpec):
+        self.add(named_column_create(cn, ops.evaluate()))
+
+    def columns_from_colnames(self, cns: Colnames) -> Tuple[Columns, bas.Errmess]:
+        #  why not implement this by making a datset and taking the columns? Because we allow duplicate columns
+        result = columns_empty(self.num_records())
+        for cn in cns.range():
+            nc, ok = self.named_column_from_colname(cn)
+            if not ok:
+                return columns_default(), bas.errmess_error(f'no column named {cn.string()}')
+            result.add(nc.column())
+        return result, bas.errmess_ok()
+
+    def columns(self) -> Columns:
+        result = columns_empty(self.num_records())
+        for c in self.range_columns():
+            result.add(c)
+        return result
+
+    def define_column(self, new_name: str, op_name: str, *colnames_as_strings: str):
+        cns = colnames_from_list_of_strings(*colnames_as_strings)
+        self.add_column_using_function(new_name, op_name, cns)
+
+    def range_floats(self, colname_as_string: str) -> Iterator[float]:
+        nc, ok = self.named_column_from_colname(colname_create(colname_as_string))
+        assert ok
+        return nc.floats().range()
+
+    def add_bools_column(self, colname_as_string, bs: arr.Bools):
+        self.add(named_column_from_bools(colname_create(colname_as_string), bs))
 
 
-
-
-def datset_empty(n_rows: int) -> Datset:
-    return Datset(n_rows, [])
+def datset_empty(n_records: int) -> Datset:
+    return Datset(n_records, [])
 
 
 def is_legal_datid(datid_as_string: str) -> bool:
@@ -1031,32 +1142,43 @@ def filename_from_string(f_name: str) -> Tuple[Filename, bas.Errmess]:
 
 
 class StringsLoadResult:
-    def __init__(self, ss, em: bas.Errmess, source_unavailable: bool):
+    def __init__(self, full_filename: str, ss: arr.Strings, em: bas.Errmess, source_unavailable: bool, method: str):
+        self.m_full_filename = full_filename
         self.m_strings = ss
         self.m_errmess = em
         self.m_source_unavailable = source_unavailable
+        self.m_method = method
         self.assert_ok()
 
-    def has_result(self) -> bool:
-        return self.is_ok() or self.has_errmess()
+    def was_successfully_loaded(self) -> bool:
+        return self.m_errmess.is_ok() and not self.m_source_unavailable
 
-    def result(self) -> Tuple[arr.Strings, bas.Errmess]:
-        assert self.has_result()
-        return self.m_strings, self.m_errmess
+    def file_not_found(self) -> bool:
+        return self.m_source_unavailable
+
+    def file_found_but_unparseable(self) -> bool:
+        return self.m_errmess.is_error()
+
+    def result(self) -> arr.Strings:
+        assert self.was_successfully_loaded()
+        return self.m_strings
 
     def assert_ok(self):
-        assert self.m_strings is None or isinstance(self.m_strings, arr.Strings)
+        assert isinstance(self.m_full_filename, str)
+        assert self.m_full_filename != ""
+        assert isinstance(self.m_strings, arr.Strings)
+        self.m_strings.assert_ok()
         assert isinstance(self.m_errmess, bas.Errmess)
+        self.m_errmess.assert_ok()
         assert isinstance(self.m_source_unavailable, bool)
+        assert isinstance(self.m_method, str)
 
         n = 0
-        if self.m_strings is not None:
+        if self.was_successfully_loaded():
             n += 1
-
-        if self.m_errmess.is_error():
+        if self.file_not_found():
             n += 1
-
-        if self.m_source_unavailable:
+        if self.file_found_but_unparseable():
             n += 1
 
         assert n == 1
@@ -1067,17 +1189,36 @@ class StringsLoadResult:
     def is_ok(self) -> bool:
         return self.m_strings is not None
 
+    def file_with_path(self) -> str:
+        return self.m_full_filename
 
-def strings_load_result_error(em: bas.Errmess) -> StringsLoadResult:
-    return StringsLoadResult(None, em, False)
+    def errmess(self) -> bas.Errmess:
+        return self.m_errmess
+
+    def should_return(self) -> bool:
+        return not self.file_not_found()
+
+    def return_result(self) -> Tuple[arr.Strings, bas.Errmess]:
+        report = self.errmess().string() if self.file_found_but_unparseable() else 'successfully loaded'
+        print(f'found data using {self.m_method} {self.file_with_path()}. {report}')
+        assert not self.file_not_found()
+        if self.was_successfully_loaded():
+            return self.result(), bas.errmess_ok()
+        else:
+            assert self.file_found_but_unparseable()
+            return arr.strings_empty(), self.errmess()
 
 
-def strings_load_result_no_file():
-    return StringsLoadResult(None, bas.errmess_ok(), True)
+def strings_load_result_error(em: bas.Errmess, method: str) -> StringsLoadResult:
+    return StringsLoadResult("", arr.strings_empty(), em, False, method)
 
 
-def strings_load_result_ok(ss: arr.Strings) -> StringsLoadResult:
-    return StringsLoadResult(ss, bas.errmess_ok(), False)
+def strings_load_result_no_file(full_filename: str, method: str):
+    return StringsLoadResult(full_filename, arr.strings_empty(), bas.errmess_ok(), True, method)
+
+
+def strings_load_result_ok(full_file_name: str, ss: arr.Strings, method: str) -> StringsLoadResult:
+    return StringsLoadResult(full_file_name, ss, bas.errmess_ok(), False, method)
 
 
 def datset_default() -> Datset:
@@ -1111,6 +1252,8 @@ class Datid:
         if em.is_error():
             return arr.smat_default(), em
 
+        assert ss.len() > 0
+
         return csv.smat_from_strings(ss)
 
     def datset_load(self) -> Tuple[Datset, bas.Errmess]:
@@ -1122,27 +1265,27 @@ class Datid:
 
     def strings_load(self) -> Tuple[arr.Strings, bas.Errmess]:
         slr = self.strings_load_using_code()
-        if slr.has_result():
-            return slr.result()
+        if slr.should_return():
+            return slr.return_result()
 
         slr = self.strings_load_result_using_filename()
-        if slr.has_result():
-            return slr.result()
+        if slr.should_return():
+            return slr.return_result()
 
         slr = self.strings_load_result_using_url()
-        if slr.has_result():
-            return slr.result()
+        if slr.should_return():
+            return slr.return_result()
 
         return arr.strings_default(), bas.errmess_error(f'Cannot find a data source using this string: {self.string()}')
 
     def strings_load_result_using_filename(self) -> StringsLoadResult:
         fn, em = filename_from_string(self.string())
         if em.is_error():
-            return strings_load_result_error(em)
+            return strings_load_result_error(em, 'local file system')
 
         f, ok = fn.open('r')
         if not ok:
-            return strings_load_result_no_file()
+            return strings_load_result_no_file(fn.string(), 'local file system')
 
         finished = False
         result = arr.strings_empty()
@@ -1160,10 +1303,11 @@ class Datid:
                 current_line += c
 
         f.close()
-        return strings_load_result_ok(result)
+        return strings_load_result_ok(fn.string(), result, 'local file system')
 
-    def string_load_using_url(self) -> Tuple[str, bool]:
-        url = "https://github.com/awmoorepa/accumulate/blob/master/" + self.string() + "?raw=true"
+    def string_load_using_url(self, git_url: str) -> Tuple[str, bool]:
+        file_url = git_url + self.string()
+        url = file_url + "?raw=true"
         response = requests.get(url, stream=True)
 
         if not response.ok:
@@ -1177,17 +1321,19 @@ class Datid:
         return result, True
 
     def strings_load_result_using_url(self) -> StringsLoadResult:
-        s, ok = self.string_load_using_url()
+        git_url = "https://github.com/awmoorepa/accumulate/blob/master/"
+        s, ok = self.string_load_using_url(git_url)
+        file_url = git_url + self.string()
         if not ok:
-            return strings_load_result_no_file()
-        return strings_load_result_ok(arr.strings_from_lines_in_string(s))
+            return strings_load_result_no_file(file_url, 'URL')
+        return strings_load_result_ok(file_url, arr.strings_from_lines_in_string(s), 'URL')
 
     def strings_load_using_code(self) -> StringsLoadResult:
         if self.equals_string("test"):
             s = test_string()
-            return strings_load_result_ok(arr.strings_from_lines_in_string(s))
+            return strings_load_result_ok("test", arr.strings_from_lines_in_string(s), "test code")
         else:
-            return strings_load_result_no_file()
+            return strings_load_result_no_file(self.string(), 'test code')
 
     def equals_string(self, test: str) -> bool:
         return self.string() == test
@@ -1586,6 +1732,7 @@ def record_array_empty() -> RecordArray:
 
 
 def colnames_from_strings(ss: arr.Strings) -> Colnames:
+    assert isinstance(ss, arr.Strings)
     return colnames_from_list_of_strings(*ss.list())
 
 
@@ -1647,13 +1794,13 @@ class ColumnDescriptions:
             yield cd
 
 
-def column_of_random_unit_floats(n_rows:int)->Column:
-    return column_from_floats(arr.floats_random_unit(n_rows))
+def column_of_random_unit_floats(n_records: int) -> Column:
+    return column_from_floats(arr.floats_random_unit(n_records))
 
 
-def named_column_of_random_unit_floats(name:str, n_rows:int)->NamedColumn:
-    return named_column_create(colname_create(name), column_of_random_unit_floats(n_rows))
+def named_column_of_random_unit_floats(name: str, n_records: int) -> NamedColumn:
+    return named_column_create(colname_create(name), column_of_random_unit_floats(n_records))
 
 
-def datset_of_random_unit_floats(colname:str, n_rows:int)->Datset:
-    return datset_from_single_named_column(named_column_of_random_unit_floats(colname,n_rows))
+def datset_of_random_unit_floats(colname: str, n_records: int) -> Datset:
+    return datset_from_single_named_column(named_column_of_random_unit_floats(colname, n_records))

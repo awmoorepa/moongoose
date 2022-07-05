@@ -1447,6 +1447,7 @@ def row_indexed_smat_from_strings_array(ssa: StringsArray) -> Tuple[RowIndexedSm
         return row_indexed_smat_default(), bas.errmess_error(
             "Can't make a row indexed smat from an empty array of strings")
 
+    assert ssa.len() > 0
     result = row_indexed_smat_single_row(ssa.strings(0))
     for r in range(1, ssa.len()):
         ss = ssa.strings(r)
@@ -1819,12 +1820,12 @@ def strings_array_varargs(*li: Strings) -> StringsArray:
     return result
 
 
-def floats_random(n_rows:int, iv:bas.Interval)->Floats:
+def floats_random(n_rows: int, iv: bas.Interval) -> Floats:
     result = floats_empty()
     for i in range(n_rows):
         result.add(iv.random())
     return result
 
 
-def floats_random_unit(n_rows:int)->Floats:
-    return floats_random(n_rows,bas.interval_unit())
+def floats_random_unit(n_rows: int) -> Floats:
+    return floats_random(n_rows, bas.interval_unit())

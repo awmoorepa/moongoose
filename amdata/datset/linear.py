@@ -94,7 +94,7 @@ class Factor:
 
     def pretty_string(self, covariate_names: arr.Strings) -> str:
         s = covariate_names.string(self.cov_id())
-        return s if self.power() == 1 else f'{s}^{self.power}'
+        return s if self.power() == 1 else f'{s}^{self.power()}'
 
     def string(self) -> str:
         s = f'x{self.cov_id()}'
@@ -462,7 +462,7 @@ class Polynomial:
 
             possible_times = '*' if self.polynomial_structure().term(t_index).len() > 0 else ''
             possible_term = t if self.polynomial_structure().term(t_index).len() > 0 else ''
-            possible_plus = '+' if t_index < self.num_terms()-1 else ''
+            possible_plus = '+' if t_index < self.num_terms() - 1 else ''
             result.add(arr.strings_varargs(c, possible_times, possible_term, possible_plus))
         return result
 
@@ -523,6 +523,7 @@ def floater_glm_create(ps: PolynomialStructure, ws: GenWeights) -> FloaterGlm:
 
 class FloaterClassGlm(lea.FloaterClass):
     def train(self, inputs: noo.FloatRecords, output: dat.Column) -> FloaterGlm:
+        print(f'polynomial degree = {self.polynomial_degree()}')
         pd = poly_data_from_float_records(inputs, self.polynomial_degree())
         ws = gen_weights_from_training(pd.term_records(), output)
         return floater_glm_create(pd.polynomial_structure(), ws)
@@ -561,10 +562,10 @@ class FloaterGlm(lea.Floater):
         self.m_polynomial_structure.assert_ok()
         assert isinstance(self.m_gen_weights, GenWeights)
         self.m_gen_weights.assert_ok()
-        assert self.m_polynomial_structure.num_terms() == self.m_gen_weights.num_weight_indexes()
 
     def pretty_strings(self, td: noo.TransformerDescription) -> arr.Strings:
         intro = self.gen_weights().pretty_strings_intro(td.output_description())
+        assert isinstance(intro, arr.Strings)
         undecorated = self.gen_weights().pretty_weight_names(self.polynomial_structure(), td)
         assert isinstance(undecorated, arr.Strings)
         decorated = undecorated.decorate('w[', ']')
@@ -651,6 +652,7 @@ class PolyDataBuilder:
         return self.m_poly_structure
 
     def add_term(self, column: arr.Floats, tm: Term):
+        print(f'adding term {tm.string()}')
         self.m_poly_structure.add_term(tm)
         self.m_t_index_to_column.add(column)
 
@@ -710,16 +712,20 @@ def poly_data_from_poly_data_builder(pd: PolyDataBuilder) -> PolyData:
 
 
 def poly_data_from_float_records(frs: noo.FloatRecords, max_degree: int) -> PolyData:
+    print(f'max degree = {max_degree}')
     assert isinstance(frs, noo.FloatRecords)
     pdb = poly_data_builder_empty(frs.num_cols())
     pdb.add_term(arr.floats_all_constant(frs.num_rows(), 1.0), term_empty())
     prev_t_indexes = arr.ints_singleton(0)
     for degree in range(1, max_degree + 1):
+        print(f'degree = {degree}')
+        print(f'prev_t_indexes = {prev_t_indexes.pretty_string()}')
         new_t_indexes = arr.ints_empty()
         assert isinstance(prev_t_indexes, arr.Ints)
         for t_index in prev_t_indexes.range():
             previous_column = pdb.column(t_index)
             tm = pdb.term(t_index)
+            print(f'consider extensions to this term: {tm.string()}')
             first_available_new_cov_id = 0 if tm.len() == 0 else tm.last_cov_id()
             for cov_id in range(first_available_new_cov_id, frs.num_cols()):
                 proposed_new_column = previous_column.map_product_with(frs.column_as_floats(cov_id))
@@ -733,8 +739,8 @@ def poly_data_from_float_records(frs: noo.FloatRecords, max_degree: int) -> Poly
         prev_t_indexes = new_t_indexes
         assert isinstance(prev_t_indexes, arr.Ints)
 
-        pdb.assert_ok()
-        return poly_data_from_poly_data_builder(pdb)
+    pdb.assert_ok()
+    return poly_data_from_poly_data_builder(pdb)
 
 
 def floater_glm_from_training(frs: noo.FloatRecords, output: dat.Column, max_degree: int) -> FloaterGlm:
@@ -1007,8 +1013,9 @@ class GenWeightsLinear(GenWeights):
     def sdev(self) -> float:
         return self.m_sdev
 
-    def pretty_strings_intro(self, output: dat.ColumnDescription) -> str:
-        return f'p({output.colname().string()}|x) ~ Normal(mu = w^T x, sdev={self.sdev()})'
+    def pretty_strings_intro(self, output: dat.ColumnDescription) -> arr.Strings:
+        s = f'p({output.colname().string()}|x) ~ Normal(mu = w^T x, sdev={self.sdev()})'
+        return arr.strings_singleton(s)
 
     def prediction_component_strings(self, output: dat.ColumnDescription) -> arr.Strings:
         result = arr.strings_singleton(output.colname().string())
@@ -1050,7 +1057,7 @@ class GenWeightsMultinomial(GenWeights):
         result = arr.strings_empty()
         for valname, weights in zip(td.output_description().valnames().range(), self.fmat().range_rows()):
             undecorated = ps.pretty_weight_names(fr_names)
-            left = f'{valname},'
+            left = f'{valname.string()},'
             decorated = undecorated.decorate(left, '')
             result.append(decorated)
         return result
@@ -1121,8 +1128,9 @@ class GenWeightsMultinomial(GenWeights):
         d2_ll_k_by_dw2_ij = -xkj * xkj * pik * (1 - pik)
         return d2_ll_k_by_dw2_ij
 
-    def pretty_strings_intro(self, output: dat.ColumnDescription) -> str:
-        return f'P({output.colname().string()}=v|Weights,x) = exp(Weights[v] . x) / K'
+    def pretty_strings_intro(self, output: dat.ColumnDescription) -> arr.Strings:
+        s = f'P({output.colname().string()}=v|Weights,x) = exp(Weights[v] . x) / K'
+        return arr.strings_singleton(s)
 
     def prediction_component_strings(self, output: dat.ColumnDescription) -> arr.Strings:
         result = arr.strings_empty()
