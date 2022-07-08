@@ -314,6 +314,9 @@ class Interval:
     def random(self) -> float:
         return range_random(self.lo(), self.hi())
 
+    def loosely_equals(self, other: Interval) -> bool:
+        return loosely_equals(self.lo(), other.lo()) and loosely_equals(self.hi(), other.hi())
+
 
 def interval_create(lo: float, hi: float) -> Interval:
     return Interval(lo, hi)
@@ -394,7 +397,7 @@ def unit_test():
     test_tidiest()
 
 
-expensive_assertions = True
+expensive_assertions = False
 
 
 def interval_unit() -> Interval:

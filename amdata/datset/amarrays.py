@@ -387,6 +387,9 @@ class Namer:
         assert isinstance(result, Strings)
         return result
 
+    def equals(self, other: Namer) -> bool:
+        return self.m_key_to_name.equals(other.m_key_to_name)
+
 
 def namer_empty() -> Namer:
     return Namer()
@@ -804,6 +807,12 @@ class Strings:
         result = strings_empty()
         for s in self.range():
             result.add(f'{left}{s}{right}')
+        return result
+
+    def deep_copy(self) -> Strings:
+        result = strings_empty()
+        for s in self.range():
+            result.add(s)
         return result
 
 

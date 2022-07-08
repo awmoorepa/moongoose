@@ -85,6 +85,21 @@ class ColumnDescription:
     def colname(self) -> Colname:
         return self.m_colname
 
+    def value_from_valname(self, target: Valname) -> Tuple[int, bool]:
+        return self.valnames().value(target)
+
+    def equals(self, other: ColumnDescription) -> bool:
+        if not self.m_colname.equals(other.m_colname):
+            return False
+
+        if self.m_coltype != other.coltype():
+            return False
+
+        if self.m_coltype == Coltype.cats and not self.m_valnames.equals(other.m_valnames):
+            return False
+
+        return True
+
 
 def valname_default() -> Valname:
     return valname_from_string("plop")
@@ -259,6 +274,25 @@ class Valnames:
     def list(self) -> List[str]:
         return self.strings().list()
 
+    def value(self, target):
+        for value, vn in enumerate(self.range()):
+            if vn.equals(target):
+                return value, True
+        return -77, False
+
+    def deep_copy(self) -> Valnames:
+        return valnames_from_strings(self.strings().deep_copy())
+
+    def equals(self, other: Valnames) -> bool:
+        if self.len() != other.len():
+            return False
+
+        for me, ot in zip(self.range(), other.range()):
+            if not me.equals(ot):
+                return False
+
+        return True
+
 
 class Cats:
     def __init__(self, row_to_value: arr.Ints, vns: Valnames):
@@ -321,7 +355,13 @@ class Cats:
             yield v
 
     def subset(self, indexes) -> Cats:
-        return cats_create(self.m_row_to_value.subset(indexes), self.m_value_to_valname)
+        return cats_from_strings(self.strings_by_row().subset(indexes))
+
+    def strings_by_row(self) -> arr.Strings:
+        result = arr.strings_empty()
+        for vn in self.range_valnames_by_row():
+            result.add(vn.string())
+        return result
 
 
 def cats_create(row_to_value: arr.Ints, vns: Valnames) -> Cats:
@@ -825,6 +865,16 @@ def named_column_from_bools(cn: Colname, bs: arr.Bools) -> NamedColumn:
 
 
 class Datset:
+    """
+    Represents a set of named columns. Each column must be of the same length. At the moment, a
+    column can be an array of booleans, an array of floats or an array of categorical values.
+
+    To create a Datset use load(filename), or make a zero-column datset (you must give number
+    of records) and then add named columns to it with the ds.add(nc) method.
+
+    A datset can be considered to be a set of NamedColumn. It can equivalently be considered to
+    be a set of Record.
+    """
     def __init__(self, n_records: int, ncs: List[NamedColumn]):  # n_records must == col length
         self.m_num_rows = n_records
         self.m_named_columns = ncs
@@ -995,17 +1045,7 @@ class Datset:
         return result
 
     def split(self, fraction_in_train: float) -> Tuple[Datset, Datset]:
-        assert self.num_records() > 1
-        n_in_train = math.floor(self.num_records() * fraction_in_train)
-        if n_in_train < 1:
-            n_in_train = 1
-        elif n_in_train == self.num_records():
-            n_in_train = self.num_records() - 1
-
-        indexes = arr.ints_random_permutation(self.num_records())
-        train_rows = indexes.first_n_elements(n_in_train).sort()
-        test_rows = indexes.last_n_elements(self.num_records() - n_in_train).sort()
-
+        train_rows, test_rows = indexes_for_train_and_test(self.num_records(), fraction_in_train)
         return self.subset_records(train_rows), self.subset_records(test_rows)
 
     def subset_records(self, row_indexes: arr.Ints) -> Datset:
@@ -1094,6 +1134,21 @@ class Datset:
 
     def add_bools_column(self, colname_as_string, bs: arr.Bools):
         self.add(named_column_from_bools(colname_create(colname_as_string), bs))
+
+
+def indexes_for_train_and_test(n_records: int, fraction_in_train: float) -> Tuple[arr.Ints, arr.Ints]:
+    assert n_records > 1
+    n_in_train = math.floor(n_records * fraction_in_train)
+    if n_in_train < 1:
+        n_in_train = 1
+    elif n_in_train == n_records:
+        n_in_train = n_records - 1
+
+    indexes = arr.ints_random_permutation(n_records)
+    train_rows = indexes.first_n_elements(n_in_train).sort()
+    test_rows = indexes.last_n_elements(n_records - n_in_train).sort()
+
+    return train_rows, test_rows
 
 
 def datset_empty(n_records: int) -> Datset:
@@ -1804,3 +1859,51 @@ def named_column_of_random_unit_floats(name: str, n_records: int) -> NamedColumn
 
 def datset_of_random_unit_floats(colname: str, n_records: int) -> Datset:
     return datset_from_single_named_column(named_column_of_random_unit_floats(colname, n_records))
+
+
+class LearnData:
+    def __init__(self, inputs: Datset, output: NamedColumn):
+        self.m_inputs = inputs
+        self.m_output = output
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_inputs, Datset)
+        self.m_inputs.assert_ok()
+        assert isinstance(self.m_output, NamedColumn)
+        self.m_output.assert_ok()
+
+        assert not self.m_inputs.contains_colname(self.m_output.colname())
+        assert self.m_inputs.num_records() == self.m_output.num_rows()
+
+    def train_test_split(self, train_fraction: float) -> Tuple[LearnData, LearnData]:
+        train_rows, test_rows = indexes_for_train_and_test(self.num_records(), train_fraction)
+        return self.subset_records(train_rows), self.subset_records(test_rows)
+
+    def num_records(self) -> int:
+        return self.inputs().num_records()
+
+    def inputs(self) -> Datset:
+        return self.m_inputs
+
+    def subset_records(self, train_rows: arr.Ints) -> LearnData:
+        return learn_data_create(self.inputs().subset_records(train_rows), self.output().subset(train_rows))
+
+    def output(self) -> NamedColumn:
+        return self.m_output
+
+    def output_column(self) -> Column:
+        return self.output().column()
+
+
+def learn_data_create(inputs: Datset, output: NamedColumn) -> LearnData:
+    return LearnData(inputs, output)
+
+
+def learn_data_from_datsets(inputs: Datset, output: Datset) -> LearnData:
+    assert output.num_cols() == 1
+    return learn_data_create(inputs, output.named_column(0))
+
+
+def datset_of_strings(colname_as_string: str, ss: arr.Strings) -> Datset:
+    return datset_from_single_column(colname_from_string(colname_as_string), column_from_strings(ss))

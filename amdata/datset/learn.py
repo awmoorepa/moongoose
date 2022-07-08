@@ -9,12 +9,29 @@ import datset.numset as noo
 
 
 class ModelClass(ABC):
+    """
+    A ModelClass is a the definition of the model, including hyper-parameters. You need a model class in
+    order to do machine learning. A the moment the available model classes are only polynomial GLMs (General
+    Linear Models) which do a linear regression, logistic regression or multinomial regression depending on
+    whether the output is float, bool or categorical respectively.
+
+    To create a GLM Model Class call
+
+    import datset.learn as lea
+    mc = lea.model_class_glm(2)
+
+    The 2 is a hyperparameter: polynomial degree. Use 1 for linear, 2 for quadratic etc.
+
+    Things you can do with a model class:
+    train() : create a model from an input and output training set
+    explain() : send to stdout a short string explaining the model class
+    """
     @abstractmethod
     def assert_ok(self):
         pass
 
     @abstractmethod
-    def train_from_named_column(self, inputs: dat.Datset, output: dat.NamedColumn) -> Model:
+    def train_from_learn_data(self, ld: dat.LearnData) -> Model:
         pass
 
     @abstractmethod
@@ -22,13 +39,49 @@ class ModelClass(ABC):
         pass
 
     def train(self, inputs: dat.Datset, output: dat.Datset) -> Model:
-        assert output.num_cols() == 1
-        assert output.num_records() == inputs.num_records()
-        return self.train_from_named_column(inputs, output.named_column(0))
+        """
+        Finds a good fitting model from the model class which hopefully explains the data accurately
+        :param inputs: A Datset with zero or more named columns
+        :param output: A Datset with exactly one named column
+        :return: a Model, which can be used for predictions
+        """
+        return self.train_from_learn_data(dat.learn_data_from_datsets(inputs, output))
+
+    def explain(self):
+        """
+        Send a short self-description to stdout
+        :return: Nothing
+        """
+        print(self.pretty_string())
+
+    def pretty_string(self) -> str:
+        return self.pretty_strings().concatenate_fancy('', '\n', '')
+
+    @abstractmethod
+    def pretty_strings(self) -> arr.Strings:
+        pass
 
 
 class Model(ABC):
+    """
+    A mapping from a Record (one row of a Datset) to an output distribution, specifying the
+    distribution of the output value, conditioned on the observed value in the input record.
 
+    A model is obtained from a model class, and an input and output Datset
+
+    To create a model do
+
+    import datset.learn as lea
+    mod = mc.train(inputs,output)
+
+    Useful methods on models:
+    mod.explain() self-description to stdout
+    mod.predict_from_record() returns the predicted probability distribution
+    mod.batch_predict() takes a whole set of records (in the form of a datset) and outputs a new datset
+                        in which the i'th output record explains the probability distribution of the
+                        prediction for the i'th input record
+    mod.loglike(input,output) computes the log of the probability (or pdf) of the output value.
+    """
     @abstractmethod
     def assert_ok(self):
         pass
@@ -60,6 +113,36 @@ class Model(ABC):
     def prediction_component_strings(self) -> arr.Strings:
         pass
 
+    def loglike_batch(self, test_in: dat.Datset, test_out: dat.Datset) -> float:
+        out_col = test_out.column(0)
+        result = 0.0
+        for input_record, output_atom in zip(test_in.range_records(), out_col.range()):
+            delta = self.loglike(input_record, output_atom)
+            assert isinstance(delta, float)
+            result += delta
+
+        return result
+
+    def loglike_from_learn_data(self, test: dat.LearnData) -> float:
+        out_col = test.output_column()
+        result = 0.0
+        for input_record, output_atom in zip(test.inputs().range_records(), out_col.range()):
+            delta = self.loglike(input_record, output_atom)
+            assert isinstance(delta, float)
+            result += delta
+
+        return result
+
+    def loglike(self, input_record: dat.Record, output_atom: dat.Atom) -> float:
+        dst = self.predict_from_record(input_record)
+        result = dst.loglike(output_atom)
+        assert isinstance(result, float)
+        return result
+
+    @abstractmethod
+    def loosely_equals(self, other: Model) -> bool:
+        pass
+
 
 def q_from_y(y_k: dat.Atom) -> float:
     assert isinstance(y_k, dat.AtomBool)
@@ -85,8 +168,25 @@ class FloaterClass(ABC):
     def name_as_string(self) -> str:
         pass
 
+    @abstractmethod
+    def pretty_strings(self) -> arr.Strings:
+        pass
+
 
 class ModelFloater(Model):
+    def loosely_equals(self, other: Model) -> bool:
+        if not isinstance(other, ModelFloater):
+            return False
+
+        assert isinstance(other, ModelFloater)
+        if not self.m_floater.loosely_equals(other.m_floater):
+            return False
+
+        if not self.m_transformer_description.loosely_equals(other.m_transformer_description):
+            return False
+
+        return True
+
     def assert_ok(self):
         assert isinstance(self.m_transformer_description, noo.TransformerDescription)
         self.m_transformer_description.assert_ok()
@@ -138,21 +238,33 @@ class Floater(ABC):
     def prediction_component_strings(self, output: dat.ColumnDescription) -> arr.Strings:
         pass
 
+    @abstractmethod
+    def loosely_equals(self, other: Floater) -> bool:
+        pass
+
 
 def model_from_floater(td: noo.TransformerDescription, fl: Floater) -> ModelFloater:
     return ModelFloater(td, fl)
 
 
 class ModelClassFloater(ModelClass):
+    def pretty_strings(self) -> arr.Strings:
+        result = arr.strings_empty()
+        result.add('This is a floater model which means it begins by transforming all columns to floats')
+        result.add('then using hot coding of categoricals and linear reduction of floats to unit interval')
+        result.add('and then the underlying algorithm is:')
+        result.append(self.floater_class().pretty_strings())
+        return result
+
     def assert_ok(self):
         assert isinstance(self.m_floater_class, FloaterClass)
         self.m_floater_class.assert_ok()
 
-    def train_from_named_column(self, inputs: dat.Datset, output: dat.NamedColumn) -> Model:
-        td = noo.transformer_description_from_datset(inputs, output)
-        nfs = td.input_transformers().named_float_records_from_datset(inputs)
+    def train_from_learn_data(self, ld: dat.LearnData) -> Model:
+        td = noo.transformer_description_from_learn_data(ld)
+        nfs = td.input_transformers().named_float_records_from_datset(ld.inputs())
         fc = self.floater_class()
-        fl = fc.train(nfs.float_records(), output.column())
+        fl = fc.train(nfs.float_records(), ld.output().column())
         return model_from_floater(td, fl)
 
     def name_as_string(self) -> str:

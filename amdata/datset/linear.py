@@ -10,6 +10,8 @@ import datset.distribution as dis
 import datset.dset as dat
 import datset.learn as lea
 import datset.numset as noo
+import datset.piclass as pic
+from datset.learn import Floater
 
 
 class TermRecord:
@@ -361,6 +363,17 @@ class PolynomialStructure:
         t_index, ok = self.t_index_from_term(tm)
         return ok
 
+    def equals(self, other: PolynomialStructure) -> bool:
+        for t in self.range_terms():
+            if not other.contains(t):
+                return False
+
+        for t in other.range_terms():
+            if not self.contains(t):
+                return False
+
+        return True
+
 
 def pretty_from_coefficient(coefficient: float, tm: Term, cov_id_to_name: arr.Strings) -> arr.Strings:
     weight_name = f'w[{tm.pretty_string(cov_id_to_name)}]'
@@ -522,6 +535,10 @@ def floater_glm_create(ps: PolynomialStructure, ws: GenWeights) -> FloaterGlm:
 
 
 class FloaterClassGlm(lea.FloaterClass):
+    def pretty_strings(self) -> arr.Strings:
+        result = arr.strings_singleton(f'polynomial GLM of degree {self.polynomial_degree()}')
+        return result
+
     def train(self, inputs: noo.FloatRecords, output: dat.Column) -> FloaterGlm:
         print(f'polynomial degree = {self.polynomial_degree()}')
         pd = poly_data_from_float_records(inputs, self.polynomial_degree())
@@ -529,7 +546,7 @@ class FloaterClassGlm(lea.FloaterClass):
         return floater_glm_create(pd.polynomial_structure(), ws)
 
     def name_as_string(self) -> str:
-        pass
+        return f'poly({self.polynomial_degree()})'
 
     def __init__(self, polynomial_degree: int):
         self.m_polynomial_degree = polynomial_degree
@@ -556,6 +573,20 @@ def polynomial_create(ps: PolynomialStructure, coefficients: arr.Floats) -> Poly
 
 
 class FloaterGlm(lea.Floater):
+
+    def loosely_equals(self, other: Floater) -> bool:
+        if not isinstance(other, FloaterGlm):
+            return False
+
+        assert isinstance(other, FloaterGlm)
+
+        if not self.polynomial_structure().equals(other.polynomial_structure()):
+            return False
+
+        if not self.gen_weights().loosely_equals(other.gen_weights()):
+            return False
+
+        return True
 
     def assert_ok(self):
         assert isinstance(self.m_polynomial_structure, PolynomialStructure)
@@ -619,7 +650,7 @@ def gen_weights_all_zero(tvs: TermRecords, output: dat.Column) -> GenWeights:
     elif ct == dat.Coltype.floats:
         return gen_weights_linear_all_zero(tvs.num_terms())
     elif ct == dat.Coltype.cats:
-        return gen_weights_multinomial_all_zero(output.cats().num_values(), tvs.num_terms())
+        return gen_weights_multinomial_all_zero(output.cats().valnames(), tvs.num_terms())
     else:
         bas.my_error('bad coltype')
 
@@ -809,7 +840,7 @@ class GenWeights(ABC):
                     ws = ws2
                     ll = ll_new2
 
-            if math.fabs(ll - ll_old) / (math.fabs(ll - start_ll)) < 1e-5:
+            if math.fabs(ll - ll_old) <= 1e-20 + (math.fabs(ll - start_ll)) * 1e-5:
                 print(f'...finished after {iteration} iterations.')
                 return ws
 
@@ -871,7 +902,11 @@ class GenWeights(ABC):
         pass
 
     @abstractmethod
-    def weight_values(self, param, param1):
+    def weight_values(self, ps: PolynomialStructure, inputs_intervals: bas.Intervals) -> arr.Floats:
+        pass
+
+    @abstractmethod
+    def loosely_equals(self, other) -> bool:
         pass
 
 
@@ -888,6 +923,13 @@ def pretty_strings_from_weights(weight_names: arr.Strings, weights: arr.Floats) 
 
 
 class GenWeightsLogistic(GenWeights):
+    def loosely_equals(self, other: GenWeights) -> bool:
+        if not isinstance(other, GenWeightsLogistic):
+            return False
+
+        assert isinstance(other, GenWeightsLogistic)
+        return self.m_weight_index_to_floats.loosely_equals(other.m_weight_index_to_floats)
+
     def weight_values(self, ps: PolynomialStructure, scaling_intervals: bas.Intervals) -> arr.Floats:
         p = polynomial_create(ps, self.floats())
         return p.account_for_transformer_intervals(scaling_intervals).coefficients()
@@ -965,6 +1007,13 @@ class GenWeightsLogistic(GenWeights):
 
 
 class GenWeightsLinear(GenWeights):
+    def loosely_equals(self, other: GenWeights) -> bool:
+        if not isinstance(other, GenWeightsLinear):
+            return False
+        assert isinstance(other, GenWeightsLinear)
+        return bas.loosely_equals(self.m_sdev, other.m_sdev) and self.m_weight_index_to_float.loosely_equals(
+            other.m_weight_index_to_float)
+
     def weight_values(self, ps: PolynomialStructure, scaling_intervals: bas.Intervals) -> arr.Floats:
         p = polynomial_create(ps, self.floats())
         return p.account_for_transformer_intervals(scaling_intervals).coefficients()
@@ -1045,6 +1094,19 @@ def gen_weights_linear_all_zero(n_terms: int) -> GenWeightsLinear:
 
 
 class GenWeightsMultinomial(GenWeights):
+    def loosely_equals(self, other: GenWeights) -> bool:
+        if not isinstance(other, GenWeightsMultinomial):
+            return False
+        assert isinstance(other, GenWeightsMultinomial)
+
+        if not self.m_value_to_term_num_to_weight.loosely_equals(other.m_value_to_term_num_to_weight):
+            return False
+
+        if not self.m_valnames.equals(other.valnames()):
+            return False
+
+        return True
+
     def weight_values(self, ps: PolynomialStructure, scaling_intervals: bas.Intervals) -> arr.Floats:
         result = arr.floats_empty()
         for weights in self.fmat().range_rows():
@@ -1067,17 +1129,21 @@ class GenWeightsMultinomial(GenWeights):
         self.m_value_to_term_num_to_weight.increment(value, term_num, delta)
 
     def deep_copy(self) -> GenWeights:
-        return gen_weights_multinomial_create(self.m_value_to_term_num_to_weight.deep_copy())
+        return gen_weights_multinomial_create(self.m_valnames.deep_copy(),
+                                              self.m_value_to_term_num_to_weight.deep_copy())
 
     def num_weight_indexes(self) -> int:
         return self.num_terms() * (self.num_values() - 1)
 
     def assert_ok(self):
+        assert isinstance(self.m_valnames, dat.Valnames)
+        self.m_valnames.assert_ok()
         fm = self.m_value_to_term_num_to_weight
         assert isinstance(fm, arr.Fmat)
         fm.assert_ok()
         assert fm.num_rows() > 0
         assert fm.row(0).loosely_equals(arr.floats_all_zero(fm.num_cols()))
+        assert self.m_valnames.len() == fm.num_rows()
 
     def eki(self, z: TermRecord, i: int) -> float:
         return math.exp(self.qki(z, i))
@@ -1097,7 +1163,7 @@ class GenWeightsMultinomial(GenWeights):
         for i in range(self.num_values()):
             eki = self.eki(tv, i)
             probs.add(eki / sk)
-        return dis.multinomial_create(probs)
+        return dis.multinomial_create(self.valnames(), probs)
 
     def weight(self, weight_index: int) -> float:
         value, term_num = self.value_and_term_num_from_weight_index(weight_index)
@@ -1138,7 +1204,8 @@ class GenWeightsMultinomial(GenWeights):
             result.add(f'p_{vn.string()}')
         return result
 
-    def __init__(self, value_to_term_num_to_weight: arr.Fmat, ):
+    def __init__(self, vns: dat.Valnames, value_to_term_num_to_weight: arr.Fmat, ):
+        self.m_valnames = vns
         self.m_value_to_term_num_to_weight = value_to_term_num_to_weight
         self.assert_ok()
 
@@ -1168,13 +1235,16 @@ class GenWeightsMultinomial(GenWeights):
     def num_terms(self) -> int:
         return self.fmat().num_cols()
 
+    def valnames(self) -> dat.Valnames:
+        return self.m_valnames
 
-def gen_weights_multinomial_create(weights_as_fmat: arr.Fmat) -> GenWeightsMultinomial:
-    return GenWeightsMultinomial(weights_as_fmat)
+
+def gen_weights_multinomial_create(vns: dat.Valnames, weights_as_fmat: arr.Fmat) -> GenWeightsMultinomial:
+    return GenWeightsMultinomial(vns, weights_as_fmat)
 
 
-def gen_weights_multinomial_all_zero(n_values: int, n_terms: int) -> GenWeightsMultinomial:
-    return gen_weights_multinomial_create(arr.fmat_of_zeroes(n_values, n_terms))
+def gen_weights_multinomial_all_zero(vns: dat.Valnames, n_terms: int) -> GenWeightsMultinomial:
+    return gen_weights_multinomial_create(vns, arr.fmat_of_zeroes(vns.len(), n_terms))
 
 
 def unit_test():
@@ -1188,7 +1258,7 @@ def unit_test():
     assert ok
     output = ds.subset('y')
     inputs = ds.without_column(output.named_column(0))
-    td = noo.transformer_description_from_datset(inputs, output.named_column(0))
+    td = noo.transformer_description_from_datsets(inputs, output)
     nfs = td.input_transformers().named_float_records_from_datset(inputs)
     assert nfs.num_covariates() == inputs.num_cols()
     fgc = floater_class_glm(1)
@@ -1204,3 +1274,23 @@ def unit_test():
     true_weights = arr.floats_varargs(50.0, 0.1, 0.0)
     print(f'true_weights = {true_weights.pretty_string()}')
     assert true_weights.distance_to(p2.coefficients()) < 0.3
+
+
+class PiClassGlm(pic.PiClass):
+    def __init__(self, name: str):
+        self.m_name = name
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert isinstance(self.m_name, str)
+
+    def choose(self, train: dat.LearnData, test: dat.LearnData) -> pic.TestResults:
+        trs = pic.test_results_empty()
+        max_degree = 2
+        for degree in range(max_degree+1):
+            trs.add_experiment(model_class_glm(degree), train, test)
+        return trs
+
+
+def piclass_glm() -> PiClassGlm:
+    return PiClassGlm('glm')

@@ -90,6 +90,9 @@ class ValnameEncoder:
     def encoding(self, vn: dat.Valname) -> Tuple[int, bool]:
         return self.m_namer.key_from_name(vn.string())
 
+    def equals(self, other: ValnameEncoder) -> bool:
+        return self.m_namer.equals(other.m_namer)
+
 
 def namer_from_encoding_to_valname(encoding_to_valname: dat.Valnames) -> arr.Namer:
     nm = arr.namer_empty()
@@ -129,8 +132,23 @@ class Transformer(ABC):
     def scaling_intervals(self):
         pass
 
+    @abstractmethod
+    def loosely_equals(self, other: Transformer) -> bool:
+        pass
+
 
 class CatTransformer(Transformer):
+    def loosely_equals(self, other: Transformer) -> bool:
+        if not isinstance(other, CatTransformer):
+            return False
+        assert isinstance(other, CatTransformer)
+        if not self.m_names.equals(other.m_names):
+            return False
+        if not self.m_valname_encoder.equals(other.m_valname_encoder):
+            return False
+
+        return True
+
     def scaling_intervals(self) -> bas.Intervals:
         return bas.intervals_all_unit(self.num_encodings())
 
@@ -190,6 +208,19 @@ def transformer_from_cats(cn: dat.Colname, cts: dat.Cats) -> CatTransformer:
 
 
 class FloatTransformer(Transformer):
+    def loosely_equals(self, other: Transformer) -> bool:
+        if not isinstance(other, FloatTransformer):
+            return False
+
+        assert isinstance(other, FloatTransformer)
+        if not self.m_name == other.m_name:
+            return False
+
+        if not self.m_interval.loosely_equals(other.m_interval):
+            return False
+
+        return True
+
     def scaling_intervals(self) -> bas.Intervals:
         return bas.intervals_singleton(self.interval())
 
@@ -233,6 +264,12 @@ def float_transformer_create(nn: str, fs: arr.Floats) -> FloatTransformer:
 
 
 class BoolTransformer(Transformer):
+    def loosely_equals(self, other: Transformer) -> bool:
+        if not isinstance(other, BoolTransformer):
+            return False
+        assert isinstance(other, BoolTransformer)
+        return self.m_name == other.m_name
+
     def scaling_intervals(self) -> bas.Intervals:
         return bas.intervals_all_unit(1)
 
@@ -353,6 +390,16 @@ class Transformers:
         for tf in self.range():
             result.append(tf.scaling_intervals())
         return result
+
+    def loosely_equals(self, other: Transformers):
+        if self.len() != other.len():
+            return False
+
+        for me, other in zip(self.range(), other.range()):
+            if not me.loosely_equals(other):
+                return False
+
+        return True
 
 
 def transformers_empty():
@@ -556,12 +603,25 @@ class TransformerDescription:
     def covariate_names(self) -> arr.Strings:
         return self.input_transformers().covariate_names()
 
+    def loosely_equals(self, other: TransformerDescription) -> bool:
+        if not self.m_input.loosely_equals(other.m_input):
+            return False
+
+        if not self.m_output.equals(other.m_output):
+            return False
+
+        return True
+
 
 def transformer_description_create(input_transformers: Transformers, output_description: dat.ColumnDescription):
     return TransformerDescription(input_transformers, output_description)
 
 
-def transformer_description_from_datset(inputs: dat.Datset, output: dat.NamedColumn) -> TransformerDescription:
-    input_transformers = transformers_from_datset(inputs)
-    output_description = output.column_description()
+def transformer_description_from_learn_data(ld: dat.LearnData) -> TransformerDescription:
+    input_transformers = transformers_from_datset(ld.inputs())
+    output_description = ld.output().column_description()
     return transformer_description_create(input_transformers, output_description)
+
+
+def transformer_description_from_datsets(inputs: dat.Datset, output: dat.Datset) -> TransformerDescription:
+    return transformer_description_from_learn_data(dat.learn_data_from_datsets(inputs, output))

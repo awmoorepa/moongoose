@@ -3,14 +3,13 @@
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
-import datset.ambasic as bas
 import datset.amarrays as arr
+import datset.ambasic as bas
 import datset.amcsv as csv
 import datset.dset as dat
-import datset.numset as num
-import datset.learn as lea
-import datset.plot as plo
 import datset.linear as lin
+import datset.numset as num
+import datset.plot as plo
 
 
 def unit_tests():
@@ -90,36 +89,74 @@ def run():
     output = a.subset('kjoules').discretize('energy', 3)
     assert isinstance(output, dat.Datset)
     #    inputs = a.without(output).without(a.subset('name', 'date'))
-    inputs = a.subset('ascent')
+    inputs = a.subset('ascent', 'distance')
     assert isinstance(inputs, dat.Datset)
-    mod = lin.model_class_glm(1).train(inputs, output)
-    assert isinstance(mod, lea.Model)
+
+    mc, mod = lin.piclass_glm().train(inputs, output)
+    print(
+        f"Here's the model CLASS we learned to predict {output.colname(0).string()} from {inputs.colnames().pretty_string()}")
+    mc.explain()
+    print(
+        f"Here's the model we learned to predict {output.colname(0).string()} from {inputs.colnames().pretty_string()}")
     mod.explain()
+    plo.show_model(mod, inputs, output)
+    check = mc.train(inputs, output)
+    print(f'checking retraining the model class gives this:')
+    check.explain()
 
-    for i in range(inputs.num_records()):
-        rw = inputs.record(i)
-        assert isinstance(rw, dat.Record)
-        print(f'predict {output.colname(0).string()} for this row: {rw.string()}')
-        mod.predict_from_record(rw).explain()
+    assert mod.loosely_equals(check)
 
-    b_inputs = a.subset('ascent', 'distance')
-    mod = lin.model_class_glm(2).train(b_inputs, output)
-    assert isinstance(mod, lea.Model)
-    plo.show_model(mod, b_inputs, output)
+    n = 100
+    d = dat.datset_of_random_unit_floats('a', n).appended_with(dat.datset_of_random_unit_floats('b', n))
+    c = arr.strings_empty()
 
-    c = a.subset('ascent').appended_with(output)
-    assert isinstance(c, dat.Datset)
-    c_train, c_test = c.split(0.6)
+    for a, b in zip(d.range_floats('a'), d.range_floats('b')):
+        dx = a - 0.5
+        dy = b - 0.5
+        cls = 'dog'
+        if dx * dx + dy * dy < 0.1:
+            cls = 'cat'
+        elif dx * dy > 0:
+            cls = 'pig'
+        elif bas.range_random(0.0, 1.0) > 0.75:
+            cls = 'cat'
 
-    c_train_in = c_train.subset('ascent')
-    c_train_out = c_train.subset('energy')
-    c_test_in = c_test.subset('ascent')
+        c.add(cls)
 
-    mod = lin.model_class_glm(1).train(c_train_in, c_train_out)
-    assert isinstance(mod, lea.Model)
+    out = dat.datset_of_strings('c', c)
+    print(out.__doc__)
 
-    d = mod.batch_predict(c_test_in)
-    d.explain()
+    mc, mod = lin.piclass_glm().train(d, out)
+    mc.explain()
+    mod.explain()
+    plo.show_model(mod, d, out)
+
+    # for i in range(inputs.num_records()):
+    #     rw = inputs.record(i)
+    #     assert isinstance(rw, dat.Record)
+    #     print(f'predict {output.colname(0).string()} for this row: {rw.string()}')
+    #     mod.predict_from_record(rw).explain()
+    #
+    # b_inputs = a.subset('ascent', 'distance')
+    # mod = lin.model_class_glm(2).train(b_inputs, output)
+    # assert isinstance(mod, lea.Model)
+    # plo.show_model(mod, b_inputs, output)
+    #
+    # batch_input = 'ascent'
+    # c = a.subset(batch_input).appended_with(output)
+    # assert isinstance(c, dat.Datset)
+    # c_train, c_test = c.split(0.6)
+    #
+    # c_train_in = c_train.subset(batch_input)
+    # c_train_out = c_train.subset('energy')
+    # c_test_in = c_test.subset(batch_input)
+    #
+    # mod = lin.model_class_glm(2).train(c_train_in, c_train_out)
+    # mod.explain()
+    # assert isinstance(mod, lea.Model)
+    #
+    # d = mod.batch_predict(c_test_in)
+    # d.explain()
 
     #  test_q3()
 
