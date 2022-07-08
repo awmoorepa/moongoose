@@ -279,7 +279,6 @@ def show_model_ffc(mod: lea.Model, x: Floatvec, y: Floatvec, z: Catvec):
     z_to_row_to_x = z.floats_array(x)
     z_to_row_to_y = z.floats_array(y)
     cls = geo.color_cycle(z.num_values())
-    print('not a dupe')
     for xs, ys, label, colo in zip(z_to_row_to_x.range(), z_to_row_to_y.range(), z.names(), cls.range()):
         ax.scatter(xs.list(), ys.list(), label=label, c=[colo.list()])
 
@@ -303,7 +302,6 @@ def show_model_ffc(mod: lea.Model, x: Floatvec, y: Floatvec, z: Catvec):
 
     ax.imshow(row_to_col_to_rgb, alpha=0.2, extent=(xlo, xhi, ylo, yhi), aspect='auto', interpolation='bilinear')
 
-    print('still not a dupe')
     ax.set_xlabel(x.label())
     ax.set_ylabel(y.label())
     ax.legend()

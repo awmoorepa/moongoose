@@ -540,7 +540,6 @@ class FloaterClassGlm(lea.FloaterClass):
         return result
 
     def train(self, inputs: noo.FloatRecords, output: dat.Column) -> FloaterGlm:
-        print(f'polynomial degree = {self.polynomial_degree()}')
         pd = poly_data_from_float_records(inputs, self.polynomial_degree())
         ws = gen_weights_from_training(pd.term_records(), output)
         return floater_glm_create(pd.polynomial_structure(), ws)
@@ -683,7 +682,6 @@ class PolyDataBuilder:
         return self.m_poly_structure
 
     def add_term(self, column: arr.Floats, tm: Term):
-        print(f'adding term {tm.string()}')
         self.m_poly_structure.add_term(tm)
         self.m_t_index_to_column.add(column)
 
@@ -743,20 +741,16 @@ def poly_data_from_poly_data_builder(pd: PolyDataBuilder) -> PolyData:
 
 
 def poly_data_from_float_records(frs: noo.FloatRecords, max_degree: int) -> PolyData:
-    print(f'max degree = {max_degree}')
     assert isinstance(frs, noo.FloatRecords)
     pdb = poly_data_builder_empty(frs.num_cols())
     pdb.add_term(arr.floats_all_constant(frs.num_rows(), 1.0), term_empty())
     prev_t_indexes = arr.ints_singleton(0)
     for degree in range(1, max_degree + 1):
-        print(f'degree = {degree}')
-        print(f'prev_t_indexes = {prev_t_indexes.pretty_string()}')
         new_t_indexes = arr.ints_empty()
         assert isinstance(prev_t_indexes, arr.Ints)
         for t_index in prev_t_indexes.range():
             previous_column = pdb.column(t_index)
             tm = pdb.term(t_index)
-            print(f'consider extensions to this term: {tm.string()}')
             first_available_new_cov_id = 0 if tm.len() == 0 else tm.last_cov_id()
             for cov_id in range(first_available_new_cov_id, frs.num_cols()):
                 proposed_new_column = previous_column.map_product_with(frs.column_as_floats(cov_id))
@@ -1270,9 +1264,7 @@ def unit_test():
     p = polynomial_create(fg.polynomial_structure(), gw.floats())
     p2 = p.account_for_transformer_intervals(td.input_intervals())
     p2.assert_ok()
-    print(f'accounted =\n{p2.pretty_string(td.covariate_names())}')
     true_weights = arr.floats_varargs(50.0, 0.1, 0.0)
-    print(f'true_weights = {true_weights.pretty_string()}')
     assert true_weights.distance_to(p2.coefficients()) < 0.3
 
 
