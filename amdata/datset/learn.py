@@ -10,8 +10,8 @@ import datset.numset as noo
 
 class ModelClass(ABC):
     """
-    A ModelClass is a the definition of the model, including hyper-parameters. You need a model class in
-    order to do machine learning. A the moment the available model classes are only polynomial GLMs (General
+    A ModelClass is a definition of the model, including hyperparameters. You need a model class in
+    order to do machine learning. At the moment the available model classes are only polynomial GLMs (General
     Linear Models) which do a linear regression, logistic regression or multinomial regression depending on
     whether the output is float, bool or categorical respectively.
 

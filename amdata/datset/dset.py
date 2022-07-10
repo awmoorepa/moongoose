@@ -105,28 +105,41 @@ def valname_default() -> Valname:
     return valname_from_string("plop")
 
 
-class Atom:
+class Atom(ABC):
+    @abstractmethod
     def assert_ok(self):
-        bas.my_error(f"assert_ok {self} base class not available")
+        pass
 
+    @abstractmethod
     def pretty_string(self) -> str:
-        bas.my_error(f"pretty_string {self} base class not available")
-        return ''
+        pass
 
+    @abstractmethod
     def float(self) -> float:
-        bas.my_error(f'float {self} base class not available')
-        return -7e77
+        pass
 
+    @abstractmethod
     def valname(self) -> Valname:
-        bas.my_error(f'categorical {self} base class not available')
-        return valname_default()
+        pass
 
+    @abstractmethod
     def bool(self) -> bool:
-        bas.my_error(f'bool {self} base class not available')
-        return False
+        pass
 
 
 class AtomCategorical(Atom):
+    def assert_ok(self):
+        assert isinstance(self.m_valname, Valname)
+        self.m_valname.assert_ok()
+
+    def float(self) -> float:
+        bas.my_error("Can't ask a AtomCategorical for a float")
+        return -7e77
+
+    def bool(self) -> bool:
+        bas.my_error("Can't ask a AtomCategorical for a bool")
+        return False
+
     def __init__(self, v: Valname):
         self.m_valname = v
 
@@ -138,6 +151,17 @@ class AtomCategorical(Atom):
 
 
 class AtomFloat(Atom):
+    def assert_ok(self):
+        assert isinstance(self.m_float, float)
+
+    def valname(self) -> Valname:
+        bas.my_error("Can't ask an AtomFloat for a valname")
+        return valname_default()
+
+    def bool(self) -> bool:
+        bas.my_error("Can't ask an AtomFloat for a bool")
+        return False
+
     def __init__(self, f: float):
         self.m_float = f
 
@@ -149,6 +173,17 @@ class AtomFloat(Atom):
 
 
 class AtomBool(Atom):
+    def assert_ok(self):
+        assert isinstance(self.m_bool, bool)
+
+    def float(self) -> float:
+        bas.my_error("Can't ask an AtomBool for a float")
+        return False
+
+    def valname(self) -> Valname:
+        bas.my_error("Can't ask an AtomBool for a valname")
+        return valname_default()
+
     def __init__(self, b: bool):
         self.m_bool = b
 
@@ -875,6 +910,7 @@ class Datset:
     A datset can be considered to be a set of NamedColumn. It can equivalently be considered to
     be a set of Record.
     """
+
     def __init__(self, n_records: int, ncs: List[NamedColumn]):  # n_records must == col length
         self.m_num_rows = n_records
         self.m_named_columns = ncs
@@ -884,7 +920,7 @@ class Datset:
         return self.cats(c).valname_from_row(r)
 
     def float(self, r: int, c: int) -> float:
-        return self.floats(c).float(r)
+        return self.floats(c).float2(r)
 
     def bool(self, r: int, c: int) -> bool:
         return self.bools(c).bool(r)
@@ -1130,7 +1166,7 @@ class Datset:
     def range_floats(self, colname_as_string: str) -> Iterator[float]:
         nc, ok = self.named_column_from_colname(colname_create(colname_as_string))
         assert ok
-        return nc.floats().range()
+        return nc.floats().range2()
 
     def add_bools_column(self, colname_as_string, bs: arr.Bools):
         self.add(named_column_from_bools(colname_create(colname_as_string), bs))
@@ -1534,7 +1570,7 @@ def cats_from_discretized_floats(fs: arr.Floats, n_buckets: int) -> Cats:
 def bools_from_binarized_floats(fs: arr.Floats) -> arr.Bools:
     middle = fs.median()
     result = arr.bools_empty()
-    for f in fs.range():
+    for f in fs.range2():
         result.add(f > middle)
     return result
 
@@ -1559,13 +1595,13 @@ class ColumnFloats(Column):
         return atom_from_float(self.float(r))
 
     def float(self, r: int) -> float:
-        return self.m_floats.float(r)
+        return self.m_floats.float2(r)
 
     def floats(self) -> arr.Floats:
         return self.m_floats
 
     def range(self):  # elements of the range are atoms
-        for f in self.m_floats.range():
+        for f in self.m_floats.range2():
             yield atom_from_float(f)
 
     def is_floats(self) -> bool:
@@ -1736,7 +1772,7 @@ def column_from_record(r: Record) -> Column:
             fs.add(a.bool())
         return column_from_bools(fs)
     elif isinstance(a0, AtomFloat):
-        fs = arr.floats_empty()
+        fs = arr.floats_empty(r.len())
         for a in r.range():
             assert isinstance(a, AtomFloat)
             fs.add(a.float())
@@ -1812,7 +1848,7 @@ def record_singleton(a: Atom) -> Record:
 
 def record_from_floats(fs: arr.Floats) -> Record:
     r = record_empty()
-    for f in fs.range():
+    for f in fs.range2():
         r.add(atom_from_float(f))
     return r
 

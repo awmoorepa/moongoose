@@ -45,12 +45,15 @@ class Vecs:
             yield v
 
     def unzip(self) -> Tuple[arr.Floats, arr.Floats]:
-        xs = arr.floats_empty()
-        ys = arr.floats_empty()
+        xs = arr.floats_empty(self.len())
+        ys = arr.floats_empty(self.len())
         for v in self.range():
             xs.add(v.x())
             ys.add(v.y())
         return xs, ys
+
+    def len(self) -> int:
+        return len(self.m_list)
 
 
 def vecs_empty() -> Vecs:
@@ -64,7 +67,7 @@ def vec_create(x: float, y: float) -> Vec:
 def vecs_from_floats(xs: arr.Floats, ys: arr.Floats) -> Vecs:
     assert xs.len() == ys.len()
     result = vecs_empty()
-    for x, y in zip(xs.range(), ys.range()):
+    for x, y in zip(xs.range2(), ys.range2()):
         result.add(vec_create(x, y))
     return result
 
