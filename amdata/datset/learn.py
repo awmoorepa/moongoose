@@ -26,6 +26,7 @@ class ModelClass(ABC):
     train() : create a model from an input and output training set
     explain() : send to stdout a short string explaining the model class
     """
+
     @abstractmethod
     def assert_ok(self):
         pass
@@ -82,6 +83,7 @@ class Model(ABC):
                         prediction for the i'th input record
     mod.loglike(input,output) computes the log of the probability (or pdf) of the output value.
     """
+
     @abstractmethod
     def assert_ok(self):
         pass
@@ -99,11 +101,13 @@ class Model(ABC):
 
     def batch_predict(self, inputs: dat.Datset) -> dat.Datset:
         cns = self.prediction_colnames()
-        rfm = arr.row_indexed_fmat_with_no_rows(cns.len())
+        fsa = arr.floats_array_empty()
         for r in inputs.range_records():
             di = self.predict_from_record(r)
-            rfm.add_row(di.as_floats())
-        fm = arr.fmat_create(rfm)
+            assert di.distribution_description().equals(self.distribution_description())
+
+            fsa.add(di.as_floats())
+        fm = arr.fmat_from_rows(cns.len(), fsa)
         return dat.datset_from_fmat(cns, fm)
 
     def prediction_colnames(self) -> dat.Colnames:
@@ -143,6 +147,10 @@ class Model(ABC):
     def loosely_equals(self, other: Model) -> bool:
         pass
 
+    @abstractmethod
+    def distribution_description(self) -> dis.DistributionDescription:
+        pass
+
 
 def q_from_y(y_k: dat.Atom) -> float:
     assert isinstance(y_k, dat.AtomBool)
@@ -152,7 +160,7 @@ def q_from_y(y_k: dat.Atom) -> float:
         return 1.0
 
 
-penalty_parameter: float = 0.0001
+penalty_parameter: float = 0.002
 
 
 class FloaterClass(ABC):
@@ -174,6 +182,9 @@ class FloaterClass(ABC):
 
 
 class ModelFloater(Model):
+    def distribution_description(self) -> dis.DistributionDescription:
+        return self.floater().distribution_description()
+
     def loosely_equals(self, other: Model) -> bool:
         if not isinstance(other, ModelFloater):
             return False
@@ -240,6 +251,10 @@ class Floater(ABC):
 
     @abstractmethod
     def loosely_equals(self, other: Floater) -> bool:
+        pass
+
+    @abstractmethod
+    def distribution_description(self):
         pass
 
 

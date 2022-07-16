@@ -66,8 +66,20 @@ def floats_from_ndarray(nda: np.ndarray) -> Floats:
     return Floats(len(nda), nda)
 
 
+def ndarray_from_list_of_floats(li: List[float]) -> np.ndarray:
+    assert isinstance(li, list)
+    for x in li:
+        assert isinstance(x, float)
+
+    nda = np.empty(len(li), dtype=float)
+    for i, x in enumerate(li):
+        nda[i] = x
+
+    return nda
+
+
 def floats_from_list2(li: List[float]) -> Floats:
-    nda = np.ndarray(li)
+    nda = ndarray_from_list_of_floats(li)
     return floats_from_ndarray(nda)
 
 
@@ -78,44 +90,65 @@ def floats_empty(capacity: int) -> Floats:
 def ints_from_ndarray(nda: np.ndarray) -> Ints:
     result = ints_empty()
     for i in np.nditer(nda):
-        assert isinstance(i, int)
-        result.add(i)
+        print(f'i = {i}')
+        print(f'type(i) = {type(i)}')
+        print(f'i.shape() = {np.shape(i)}')
+        print(f'i.ndim() = {np.ndim(i)}')
+        j = int(i)
+        assert isinstance(j, int)
+        result.add(j)
     return result
 
 
 class Floats:
-    def __init__(self, capacity: int, fs: np.ndarray):
-        n_filled = len(fs)
+    def __init__(self, capacity: int, nda: np.ndarray):
+        n_filled = len(nda)
         assert n_filled <= capacity
         self.m_num_filled = n_filled
         self.m_capacity = capacity
-        self.m_floats = np.empty(capacity)
-        self.m_floats[:n_filled] = fs
-        self.m_floats[n_filled:] = -8e88
+
+        if n_filled == capacity:
+            self.m_ndarray = nda
+        else:
+            self.m_ndarray = np.empty(shape=capacity, dtype=float)
+            for i, x in enumerate(nda):
+                assert isinstance(x, float)
+                self.m_ndarray[i] = x
+            for i in range(n_filled, capacity):
+                self.m_ndarray[i] = -8e88
         self.assert_ok()
 
     def assert_ok(self):
         assert isinstance(self.m_num_filled, int)
         assert isinstance(self.m_capacity, int)
         assert 0 <= self.m_num_filled <= self.m_capacity
-        assert isinstance(self.m_floats, np.ndarray)
-        for i, x in enumerate(np.nditer(self.m_floats)):
-            assert isinstance(x, float)
-            if i < self.m_num_filled:
-                assert x > -7e88
-            else:
-                assert x < -7e88
+        assert isinstance(self.m_ndarray, np.ndarray)
+        if self.m_capacity > 0:
+            for i, x in enumerate(np.nditer(self.m_ndarray)):
+                # print(f'i = {i}')
+                # print(f'x.type() = {type(x)}')
+                # print(f'x.shape() = {np.shape(x)}')
+                # print(f'x.isscalar() = {np.isscalar(x)}')
+                # print(f'x.ndim() = {np.ndim(x)}')
+                # print(f'float(x) = {float(x)}')
+                # print(f'isinstance(x,numbers.Number) = {isinstance(x, numbers.Number)}')
+                assert np.ndim(x) == 0
+                if i < self.m_num_filled:
+                    assert float(x) > -7e88
+                else:
+                    assert float(x) < -7e88
 
     def is_filled(self) -> bool:
         return self.m_num_filled == self.m_capacity
 
     def range2(self) -> Iterator[float]:
         assert self.is_filled()
-        return np.nditer(self.m_floats)
+        for x in np.nditer(self.m_ndarray):
+            yield float(x)
 
     def sum(self) -> float:
         assert self.is_filled()
-        return self.m_floats.sum()
+        return self.m_ndarray.sum()
 
     def len(self) -> int:
         assert self.is_filled()
@@ -127,7 +160,7 @@ class Floats:
 
     def set2(self, index: int, v: float):
         assert 0 <= index < self.len()
-        self.m_floats[index] = v
+        self.m_ndarray[index] = v
 
     def is_loosely_zero(self) -> bool:
         epsilon = 1e-5
@@ -140,12 +173,17 @@ class Floats:
         self.set2(i, self.float2(i) + delta)
 
     def dot_product(self, other: Floats) -> float:
-        return float(np.dot(self.m_floats, other.m_floats))
+        assert self.len() == other.len()
+        assert self.is_filled()
+        assert other.is_filled()
+        return float(np.dot(self.m_ndarray, other.m_ndarray))
 
     def minus(self, other: Floats) -> Floats:
         assert isinstance(other, Floats)
         assert self.len() == other.len()
-        return floats_from_ndarray(np.subtract(self.m_floats, other.m_floats))
+        assert self.is_filled()
+        assert other.is_filled()
+        return floats_from_ndarray(np.subtract(self.m_ndarray, other.m_ndarray))
 
     def pretty_string(self) -> str:
         ss = self.strings()
@@ -160,7 +198,8 @@ class Floats:
         return result
 
     def deep_copy(self) -> Floats:
-        return floats_from_ndarray(np.copy(self.m_floats))
+        assert self.is_filled()
+        return floats_from_ndarray(np.copy(self.m_ndarray))
 
     def squared(self) -> float:
         return self.dot_product(self)
@@ -169,24 +208,29 @@ class Floats:
         return self.extremes().tidy_surrounder()
 
     def min(self) -> float:
-        return np.min(self.m_floats)
+        assert self.is_filled()
+        return np.min(self.m_ndarray)
 
     def argmin(self) -> int:
-        return int(np.argmin(self.m_floats))
+        assert self.is_filled()
+        return int(np.argmin(self.m_ndarray))
 
     def max(self) -> float:
-        return np.max(self.m_floats)
+        assert self.is_filled()
+        return np.max(self.m_ndarray)
 
     def argmax(self) -> int:
-        return int(np.argmax(self.m_floats))
+        return int(np.argmax(self.m_ndarray))
 
     def tidy_extremes(self) -> Tuple[float, float]:
         return self.tidy_surrounder().extremes()
 
     def plus(self, other: Floats) -> Floats:
-        return floats_from_ndarray(np.add(self.m_floats, other.m_floats))
+        assert self.is_filled()
+        return floats_from_ndarray(np.add(self.m_ndarray, other.m_ndarray))
 
     def subset(self, indexes: Ints) -> Floats:
+        assert self.is_filled()
         result = floats_empty(indexes.len())
         for i in indexes.range():
             result.add(self.float2(i))
@@ -194,7 +238,8 @@ class Floats:
         return result
 
     def indexes_of_sorted(self) -> Ints:
-        return ints_from_ndarray(np.argsort(self.m_floats))
+        assert self.is_filled()
+        return ints_from_ndarray(np.argsort(self.m_ndarray))
 
     def without_leftmost_element(self) -> Floats:
         return self.without_n_leftmost_elements(1)
@@ -207,16 +252,20 @@ class Floats:
         return result
 
     def median(self) -> float:
-        return float(np.median(self.m_floats))
+        assert self.is_filled()
+        return float(np.median(self.m_ndarray))
 
     def sorted(self) -> Floats:
         return self.subset(self.indexes_of_sorted())
 
     def times_scalar(self, scale: float) -> Floats:
-        return floats_from_ndarray(self.m_floats * scale)
+        assert self.is_filled()
+        return floats_from_ndarray(self.m_ndarray * scale)
 
     def map_product_with(self, other: Floats) -> Floats:
-        return floats_from_ndarray(np.multiply(self.m_floats, other.m_floats))
+        assert self.is_filled()
+        assert other.is_filled()
+        return floats_from_ndarray(np.multiply(self.m_ndarray, other.m_ndarray))
 
     def is_loosely_constant(self) -> bool:
         if self.len() < 2:
@@ -234,7 +283,7 @@ class Floats:
         return self.sum() / self.len()
 
     def float2(self, i: int) -> float:
-        return self.m_floats[i]
+        return self.m_ndarray[i]
 
     def magnitude(self) -> float:
         return math.sqrt(self.squared())
@@ -243,7 +292,8 @@ class Floats:
         return self.plus_scalar(-x)
 
     def plus_scalar(self, x: float) -> Floats:
-        result = np.copy(self.m_floats)
+        assert self.is_filled()
+        result = np.copy(self.m_ndarray)
         result[:] += x
         return floats_from_ndarray(result)
 
@@ -251,6 +301,8 @@ class Floats:
         return self.dot_product(self)
 
     def appended_with(self, other: Floats) -> Floats:
+        assert self.is_filled()
+        assert other.is_filled()
         result = floats_empty(self.len() + other.len())
         for x in self.range2():
             result.add(x)
@@ -261,8 +313,15 @@ class Floats:
     def add(self, f: float):
         assert isinstance(f, float)
         assert self.m_num_filled < self.m_capacity
-        self.m_floats[self.m_num_filled] = f
+        self.m_ndarray[self.m_num_filled] = f
         self.m_num_filled += 1
+
+    def list(self) -> List[float]:
+        assert self.is_filled()
+        result = []
+        for x in self.range2():
+            result.append(x)
+        return result
 
 
 # class Floats:
@@ -458,7 +517,7 @@ class Floats:
 #
 #     def median(self) -> float:
 #         result = self.median_helper()
-#         print(f'remove this slow test')
+#         print(f' remove this slow test')
 #         assert bas.loosely_equals(result, self.median_slow())
 #         return result
 #
@@ -716,7 +775,7 @@ class Ints:
         return self.int(self.argmin())
 
     def invert_index(self):  # return Ints
-        if bas.expensive_assertions:
+        if bas.expensive_assertions2:
             assert self.sort().equals(identity_ints(self.len()))
 
         if self.len() > 0:
@@ -730,7 +789,7 @@ class Ints:
             assert result.int(v) < 0
             result.set(v, i)
 
-        if bas.expensive_assertions:
+        if bas.expensive_assertions2:
             for v, i in enumerate(result.range()):
                 assert 0 <= i < self.len()
                 assert self.int(i) == v
@@ -859,7 +918,7 @@ def indexes_of_sorted(li: list) -> Ints:
     for pair in sorted_pairs:
         result.add(pair[0])
 
-    if bas.expensive_assertions:
+    if bas.expensive_assertions2:
         assert isinstance(result, Ints)
         assert result.len() == len(li)
         assert result.min() == 0
@@ -1139,6 +1198,7 @@ def floats_default():
 
 
 def floats_from_strings(ss: Strings) -> Tuple[Floats, bool]:
+    print(f'enter floats_from_strings({ss.pretty_string()})')
     result = floats_empty(ss.len())
     for s in ss.range():
         f, ok = bas.float_from_string(s)
@@ -1207,8 +1267,10 @@ def unit_test_transpose():
 
 def unit_test_median():
     fs = floats_varargs(3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0)
-    assert bas.loosely_equals(fs.median(), 4.5)
-    assert bas.loosely_equals(fs.sorted().median(), 4.5)
+    med = fs.median()
+    print(f'median = {med}')
+    assert bas.loosely_equals(med, 3.5)
+    assert bas.loosely_equals(fs.sorted().median(), 3.5)
     fs = fs.appended_with(floats_singleton(4.0))
     assert bas.loosely_equals(fs.median(), 4.0)
     assert bas.loosely_equals(fs.sorted().median(), 4.0)
@@ -1299,7 +1361,7 @@ class RowIndexedSmat:
         assert isinstance(result, RowIndexedSmat)
         return result
 
-    def transpose(self):  # returns RowIndexedSmat
+    def transpose(self) -> RowIndexedSmat:
         result = row_indexed_smat_with_no_rows(self.num_rows())
         for c in self.range_columns_slow():
             result.add(c)
@@ -1413,6 +1475,9 @@ class Smat:
     def range_columns(self) -> Iterator[Strings]:
         return self.m_col_to_row_to_string.range_rows()
 
+    def equals(self, other: Smat) -> bool:
+        return self.m_row_to_col_to_string.equals(other.m_row_to_col_to_string)
+
 
 def smat_single_row(first_row: Strings) -> Smat:
     return smat_create(row_indexed_smat_single_row(first_row))
@@ -1434,6 +1499,7 @@ class FloatsArray:
             yield fs
 
     def add(self, fs: Floats):
+        assert fs.is_filled()
         self.m_list.append(fs)
 
     def floats(self, i: int) -> Floats:
@@ -1448,131 +1514,174 @@ class FloatsArray:
         for fs in self.range():
             line = []
             for f in fs.range2():
-                line = line.append(f)
-            result = result.append(line)
+                line.append(f)
+            result.append(line)
         return result
 
+    def float(self, row: int, index_in_row: int) -> float:
+        return self.floats(row).float2(index_in_row)
 
-class RowIndexedFmat:
-    def __init__(self, n_cols: int):
-        self.m_num_cols = n_cols
-        self.m_row_to_col_to_value = floats_array_empty()
-        self.assert_ok()
-
-    def assert_ok(self):
-        assert isinstance(self.m_num_cols, int)
-        assert self.m_num_cols >= 0
-        assert isinstance(self.m_row_to_col_to_value, FloatsArray)
-        self.m_row_to_col_to_value.assert_ok()
-
-        for row in self.m_row_to_col_to_value.range():
-            assert row.len() == self.m_num_cols
-
-    def transpose(self):  # returns RowIndexedFmat
-        self_n_cols = self.num_cols()
-        self_n_rows = self.num_rows()
-        result_n_rows = self_n_cols
-        result_n_cols = self_n_rows
-
-        result = row_indexed_fmat_of_empties(result_n_rows, result_n_cols)
-        for self_row in self.range_rows():
-            result.add_column(self_row)
-
-        assert isinstance(result, RowIndexedFmat)
-        assert result.num_rows() == self.num_cols()
-        assert result.num_cols() == self.num_rows()
-        assert result.all_filled()
-
-        result.assert_ok()
-
-        return result
-
-    def add_column(self, col: Floats):
-        assert col.len() == self.num_rows()
-        for row, f in zip(self.range_rows(), col.range2()):
-            row.add(f)
-        self.m_num_cols += 1
-
-    def loosely_equals(self, other: RowIndexedFmat) -> bool:
-        assert isinstance(other, RowIndexedFmat)
-        if self.num_rows() != other.num_rows():
+    def loosely_equals(self, other: FloatsArray) -> bool:
+        if not self.len() == other.len():
             return False
 
-        if self.num_cols() != other.num_cols():
-            return False
-
-        for a, b in zip(self.range_rows(), other.range_rows()):
+        for a, b in zip(self.range(), other.range()):
             if not a.loosely_equals(b):
                 return False
+
         return True
 
-    def add_row(self, fs: Floats):
-        assert self.num_cols() == fs.len()
-        self.m_row_to_col_to_value.add(fs)
-
-    def range_rows(self) -> Iterator[Floats]:
-        return self.m_row_to_col_to_value.range()
-
-    def num_cols(self) -> int:
-        return self.m_num_cols
-
-    def num_rows(self) -> int:
-        return self.m_row_to_col_to_value.len()
-
-    def floats(self, r: int) -> Floats:
-        assert 0 <= r < self.num_rows()
-        return self.m_row_to_col_to_value.floats(r)
-
-    def increment(self, r: int, col: int, delta: float):
-        self.floats(r).increment2(col, delta)
-
-    def deep_copy(self) -> RowIndexedFmat:
-        result = row_indexed_fmat_with_no_rows(self.num_cols())
-        for r in self.range_rows():
-            result.add_row(r.deep_copy())
+    def deep_copy(self) -> FloatsArray:
+        result = floats_array_empty()
+        for fs in self.range():
+            result.add(fs.deep_copy())
         return result
 
-    def set(self, row: int, column: int, f: float):
-        self.m_row_to_col_to_value.floats(row).set2(column, f)
-        assert bas.loosely_equals(f, self.floats(row).float2(column))
-
-    def all_filled(self) -> bool:
-        for r in self.range_rows():
-            if not r.is_filled():
-                return False
-        return True
+    def set(self, row: int, col: int, x: float):
+        self.floats(row).set2(col, x)
+        assert bas.loosely_equals(self.float(row, col), x)
 
 
-def row_indexed_fmat_with_no_rows(n_cols: int):
-    return RowIndexedFmat(n_cols)
-
-
-def row_indexed_fmat_of_empties(n_rows: int, n_cols: int) -> RowIndexedFmat:
-    result = row_indexed_fmat_with_no_rows(0)
-    for i in range(n_rows):
-        result.add_row(floats_empty(n_cols))
-    return result
+# class RowIndexedFmat:
+#     def __init__(self, n_cols: int):
+#         self.m_num_cols = n_cols
+#         self.m_row_to_col_to_value = floats_array_empty()
+#         self.assert_ok()
+#
+#     def assert_ok(self):
+#         assert isinstance(self.m_num_cols, int)
+#         assert self.m_num_cols >= 0
+#         assert isinstance(self.m_row_to_col_to_value, FloatsArray)
+#         self.m_row_to_col_to_value.assert_ok()
+#
+#         for row in self.m_row_to_col_to_value.range():
+#             assert row.len() == self.m_num_cols
+#
+#     def transpose(self):  # returns RowIndexedFmat
+#         self_n_cols = self.num_cols()
+#         self_n_rows = self.num_rows()
+#         result_n_rows = self_n_cols
+#         result_n_cols = self_n_rows
+#
+#         result = row_indexed_fmat_of_empties(result_n_rows, result_n_cols)
+#         for self_row in self.range_rows():
+#             result.add_column(self_row)
+#
+#         assert isinstance(result, RowIndexedFmat)
+#         assert result.num_rows() == self.num_cols()
+#         assert result.num_cols() == self.num_rows()
+#         assert result.all_filled()
+#
+#         result.assert_ok()
+#
+#         return result
+#
+#     def add_column(self, col: Floats):
+#         assert col.len() == self.num_rows()
+#         for row, f in zip(self.range_rows(), col.range2()):
+#             row.add(f)
+#         self.m_num_cols += 1
+#
+#     def loosely_equals(self, other: RowIndexedFmat) -> bool:
+#         assert isinstance(other, RowIndexedFmat)
+#         if self.num_rows() != other.num_rows():
+#             return False
+#
+#         if self.num_cols() != other.num_cols():
+#             return False
+#
+#         for a, b in zip(self.range_rows(), other.range_rows()):
+#             if not a.loosely_equals(b):
+#                 return False
+#         return True
+#
+#     def add_row(self, fs: Floats):
+#         assert self.num_cols() == fs.len()
+#         self.m_row_to_col_to_value.add(fs)
+#
+#     def range_rows(self) -> Iterator[Floats]:
+#         return self.m_row_to_col_to_value.range()
+#
+#     def num_cols(self) -> int:
+#         return self.m_num_cols
+#
+#     def num_rows(self) -> int:
+#         return self.m_row_to_col_to_value.len()
+#
+#     def floats(self, r: int) -> Floats:
+#         assert 0 <= r < self.num_rows()
+#         return self.m_row_to_col_to_value.floats(r)
+#
+#     def increment(self, r: int, col: int, delta: float):
+#         self.floats(r).increment2(col, delta)
+#
+#     def deep_copy(self) -> RowIndexedFmat:
+#         result = row_indexed_fmat_with_no_rows(self.num_cols())
+#         for r in self.range_rows():
+#             result.add_row(r.deep_copy())
+#         return result
+#
+#     def set(self, row: int, column: int, f: float):
+#         self.m_row_to_col_to_value.floats(row).set2(column, f)
+#         assert bas.loosely_equals(f, self.floats(row).float2(column))
+#
+#     def all_filled(self) -> bool:
+#         for r in self.range_rows():
+#             if not r.is_filled():
+#                 return False
+#         return True
+#
+#
+# def row_indexed_fmat_with_no_rows(n_cols: int):
+#     return RowIndexedFmat(n_cols)
+#
+#
+# def row_indexed_fmat_of_empties(n_rows: int, n_cols: int) -> RowIndexedFmat:
+#     result = row_indexed_fmat_with_no_rows(0)
+#     for i in range(n_rows):
+#         result.add_row(floats_empty(n_cols))
+#     return result
 
 
 class Fmat:
-    def __init__(self, rif: RowIndexedFmat):
-        assert rif.all_filled()
-        rif.assert_ok()
-        self.m_row_to_col_to_value = rif
-        self.m_col_to_row_to_value = rif.transpose()
+    def __init__(self, n_cols: int, fsa: FloatsArray):
+        n_rows = fsa.len()
+        transpose = floats_array_empty()
+        for col in range(n_cols):
+            row_of_transpose = floats_empty(n_rows)
+            for r in fsa.range():
+                assert r.len() == n_cols
+                row_of_transpose.add(r.float2(col))
+            transpose.add(row_of_transpose)
+
+        self.m_row_to_col_to_value = fsa
+        self.m_col_to_row_to_value = transpose
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_row_to_col_to_value, RowIndexedFmat)
-        self.m_row_to_col_to_value.assert_ok()
-        assert isinstance(self.m_col_to_row_to_value, RowIndexedFmat)
-        self.m_col_to_row_to_value.assert_ok()
-        tr = self.m_col_to_row_to_value.transpose()
-        assert isinstance(tr, RowIndexedFmat)
-        assert self.m_row_to_col_to_value.loosely_equals(tr)
+
+        s = self.m_row_to_col_to_value
+        assert isinstance(s, FloatsArray)
+        s.assert_ok()
+        t = self.m_col_to_row_to_value
+        assert isinstance(t, FloatsArray)
+        t.assert_ok()
+
+        for row in s.range():
+            assert row.len() == self.num_cols()
+
+        for col in t.range():
+            assert col.len() == self.num_rows()
+
+        for i in range(self.num_rows()):
+            for j in range(self.num_cols()):
+                if not bas.loosely_equals(s.float(i, j), t.float(j, i)):
+                    print(f's.float(i, j) = {s.float(i, j)}')
+                    print(f't.float(j, i) = {t.float(j, i)}')
+                    bas.my_error('transpose invariant failed')
 
     def num_rows(self) -> int:
-        return self.m_row_to_col_to_value.num_rows()
+        return self.m_row_to_col_to_value.len()
 
     def row(self, r: int) -> Floats:
         return self.m_row_to_col_to_value.floats(r)
@@ -1615,34 +1724,29 @@ class Fmat:
         return self.smat().pretty_strings_with_headings(top_left, left, top)
 
     def range_rows(self) -> Iterator[Floats]:
-        for fs in self.m_row_to_col_to_value.range_rows():
+        for fs in self.m_row_to_col_to_value.range():
             yield fs
 
     def range_columns(self) -> Iterator[Floats]:
-        for fs in self.m_col_to_row_to_value.range_rows():
+        for fs in self.m_col_to_row_to_value.range():
             yield fs
 
     def pretty_string(self) -> str:
         return self.pretty_strings().concatenate_fancy('', '\n', '')
 
-    def range_cols(self) -> Iterator[Floats]:
-        return self.m_col_to_row_to_value.range_rows()
-
     def deep_copy(self) -> Fmat:
-        return fmat_create(self.m_row_to_col_to_value.deep_copy())
+        return fmat_from_rows(self.num_cols(), self.m_row_to_col_to_value.deep_copy())
 
     def increment(self, row: int, column: int, delta: float):
-        self.row(row).increment2(column, delta)
+        self.set(row, column, self.float2(row, column) + delta)
 
     def set(self, row: int, column: int, f: float):
         self.m_row_to_col_to_value.set(row, column, f)
         self.m_col_to_row_to_value.set(column, row, f)
-        if bas.expensive_assertions:
-            self.assert_ok()
 
 
-def fmat_create(rif: RowIndexedFmat) -> Fmat:
-    return Fmat(rif)
+def fmat_from_rows(n_cols: int, fsa: FloatsArray) -> Fmat:
+    return Fmat(n_cols, fsa)
 
 
 def floats_all_constant(n: int, c: float) -> Floats:
@@ -1702,48 +1806,40 @@ def smat_default():
     return smat_unit("default")
 
 
-def row_indexed_fmat_single_row(fs: Floats) -> RowIndexedFmat:
-    result = row_indexed_fmat_with_no_rows(fs.len())
-    result.add_row(fs)
+def floats_array_singleton(fs: Floats) -> FloatsArray:
+    result = floats_array_empty()
+    result.add(fs)
     return result
 
 
-def row_indexed_fmat_singleton(x: float) -> RowIndexedFmat:
-    return row_indexed_fmat_single_row(floats_singleton(x))
-
-
-def row_indexed_fmat_default() -> RowIndexedFmat:
-    return row_indexed_fmat_with_no_rows(0)
-
-
-def row_indexed_fmat_from_smat(sm: Smat) -> Tuple[RowIndexedFmat, bas.Errmess]:
-    result = row_indexed_fmat_with_no_rows(sm.num_cols())
+def floats_array_from_smat(sm: Smat) -> Tuple[FloatsArray, bas.Errmess]:
+    result = floats_array_empty()
     for ss in sm.range_rows():
         fs, ok = floats_from_strings(ss)
         if not ok:
-            return row_indexed_fmat_default(), bas.errmess_error(
-                f"Can't convert this into numbers: {ss.pretty_string()}")
-        result.add_row(fs)
+            return floats_array_empty(), bas.errmess_error(f"Can't convert into numbers: {ss.pretty_string()}")
+        result.add(fs)
 
     return result, bas.errmess_ok()
 
 
 def fmat_default() -> Fmat:
-    return fmat_create(row_indexed_fmat_default())
+    return fmat_from_rows(0, floats_array_empty())
 
 
 def fmat_from_smat(sm: Smat) -> Tuple[Fmat, bas.Errmess]:
-    rif, err = row_indexed_fmat_from_smat(sm)
+    rif, err = floats_array_from_smat(sm)
     if err.is_error():
         return fmat_default(), err
 
-    return fmat_create(rif), bas.errmess_ok()
+    n_cols = 0 if rif.len() == 0 else rif.floats(0).len()
+    return fmat_from_rows(n_cols, rif), bas.errmess_ok()
 
 
-def row_indexed_fmat_of_zeroes(n_rows: int, n_cols: int) -> RowIndexedFmat:
-    result = row_indexed_fmat_with_no_rows(n_cols)
+def floats_array_of_zeroes(n_rows: int, n_cols: int) -> FloatsArray:
+    result = floats_array_empty()
     for r in range(n_rows):
-        result.add_row(floats_all_zero(n_cols))
+        result.add(floats_all_zero(n_cols))
     return result
 
 
@@ -1806,7 +1902,7 @@ class RowIndexedImat:
         for row in self.m_row_to_col_to_value.range():
             assert row.len() == self.m_num_cols
 
-    def transpose(self):  # returns RowIndexedImat
+    def transpose(self) -> RowIndexedImat:
         self_n_cols = self.num_cols()
         result_n_rows = self_n_cols
 
@@ -2003,16 +2099,6 @@ def ints_random_permutation(n: int) -> Ints:
     return result
 
 
-def fmat_from_floats_array(fa: FloatsArray) -> Fmat:
-    assert fa.len() > 0
-
-    rif = row_indexed_fmat_with_no_rows(fa.floats(0).len())
-    for fs in fa.range():
-        rif.add_row(fs)
-
-    return fmat_create(rif)
-
-
 def floats_varargs(*li: float) -> Floats:
     assert isinstance(li, tuple)
     result = floats_empty(len(li))
@@ -2032,7 +2118,7 @@ def strings_varargs(*li: str) -> Strings:
 
 
 def fmat_of_zeroes(n_rows: int, n_columns: int) -> Fmat:
-    return fmat_create(row_indexed_fmat_of_zeroes(n_rows, n_columns))
+    return fmat_from_rows(n_columns, floats_array_of_zeroes(n_rows, n_columns))
 
 
 def strings_array_varargs(*li: Strings) -> StringsArray:
@@ -2053,3 +2139,10 @@ def floats_random(n_rows: int, iv: bas.Interval) -> Floats:
 
 def floats_random_unit(n_rows: int) -> Floats:
     return floats_random(n_rows, bas.interval_unit())
+
+
+def floats_array_from_list_of_lists(v2f: List[List[float]]) -> FloatsArray:
+    result = floats_array_empty()
+    for fs in v2f:
+        result.add(floats_from_list2(fs))
+    return result

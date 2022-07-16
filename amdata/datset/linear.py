@@ -30,7 +30,7 @@ class TermRecord:
         return self.m_floats
 
     def float(self, t_index: int) -> float:
-        return self.floats().float(t_index)
+        return self.floats().float2(t_index)
 
 
 class TermRecords:
@@ -347,8 +347,6 @@ class PolynomialStructure:
         if tm.len() > 0:
             assert tm.max_cov_id() < self.num_covariates()
         self.m_t_index_to_term.add(tm)
-        if bas.expensive_assertions:
-            self.assert_ok()
 
     def term(self, t_index: int) -> Term:
         return self.m_t_index_to_term.term(t_index)
@@ -381,76 +379,88 @@ def pretty_from_coefficient(coefficient: float, tm: Term, cov_id_to_name: arr.St
 
 
 class CoefficientTerm:
-    def __init__(self,coefficient:float,tm:Term):
+    def __init__(self, coefficient: float, tm: Term):
         self.m_coefficient = coefficient
         self.m_term = tm
         self.assert_ok()
 
-    def term(self)->Term:
+    def term(self) -> Term:
         return self.m_term
 
     def assert_ok(self):
-        assert isinstance(self.m_coefficient,float)
-        assert isinstance(self.m_term,Term)
+        assert isinstance(self.m_coefficient, float)
+        assert isinstance(self.m_term, Term)
         self.m_term.assert_ok()
 
-    def coefficient(self)->float:
+    def coefficient(self) -> float:
         return self.m_coefficient
 
-    def increment_coefficient(self, delta:float):
+    def increment_coefficient(self, delta: float):
         self.m_coefficient += delta
+
+    def times_scalar(self, scale: float) -> CoefficientTerm:
+        return coefficient_term_create(self.coefficient() * scale, self.term())
+
+    def deep_copy(self) -> CoefficientTerm:
+        return coefficient_term_create(self.coefficient(), self.term().deep_copy())
 
 
 class CoefficientTerms:
-    def __init__(self,li:List[CoefficientTerm]):
+    def __init__(self, li: List[CoefficientTerm]):
         self.m_list = li
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_list,list)
-        for t_index,ct in enumerate(self.m_list):
-            assert isinstance(ct,CoefficientTerm)
+        assert isinstance(self.m_list, list)
+        for t_index, ct in enumerate(self.m_list):
+            assert isinstance(ct, CoefficientTerm)
             ct.assert_ok()
-            for ti2 in range(t_index+1,self.len()):
+            for ti2 in range(t_index + 1, self.len()):
                 assert not ct.term().equals(self.term(ti2))
 
-    def len(self)->int:
+    def len(self) -> int:
         return len(self.m_list)
 
-    def range(self)->Iterator[CoefficientTerm]:
+    def range(self) -> Iterator[CoefficientTerm]:
         for ct in self.m_list:
             yield ct
 
-    def add(self, ct:CoefficientTerm):
+    def add(self, ct: CoefficientTerm):
         self.m_list.append(ct)
 
-    def term(self, t_index:int)->Term:
+    def term(self, t_index: int) -> Term:
         return self.coefficient_term(t_index).term()
 
-    def coefficient_term(self, t_index:int)->CoefficientTerm:
+    def coefficient_term(self, t_index: int) -> CoefficientTerm:
         assert 0 <= t_index < self.len()
         return self.m_list[t_index]
 
-    def increment_coefficient(self, t_index:int, delta:float):
+    def increment_coefficient(self, t_index: int, delta: float):
         self.coefficient_term(t_index).increment_coefficient(delta)
 
+    def deep_copy(self) -> CoefficientTerms:
+        result = coefficient_terms_empty()
+        for ct in self.range():
+            result.add(ct.deep_copy())
+        return result
 
-def coefficient_term_create(coefficient:float, tm:Term)->CoefficientTerm:
-    return CoefficientTerm(coefficient,tm)
+
+def coefficient_term_create(coefficient: float, tm: Term) -> CoefficientTerm:
+    return CoefficientTerm(coefficient, tm)
 
 
 class Polynomial:
-    def __init__(self, n_covariates:int, cts: CoefficientTerms):
+    def __init__(self, n_covariates: int, cts: CoefficientTerms):
         self.m_num_covariates = n_covariates
-        self.m_t_index_to_coefficient_terms = cts
+        self.m_t_index_to_coefficient_term = cts
         self.assert_ok()
 
     def assert_ok(self):
-        assert isinstance(self.m_t_index_to_coefficient_terms,CoefficientTerms)
-        self.m_t_index_to_coefficient_terms.assert_ok()
-        assert isinstance(self.m_num_covariates,int)
+        assert isinstance(self.m_t_index_to_coefficient_term, CoefficientTerms)
+        self.m_t_index_to_coefficient_term.assert_ok()
+        assert isinstance(self.m_num_covariates, int)
         for tm in self.range_terms():
-            assert tm.len()==0 or tm.max_cov_id() < self.num_covariates()
+            assert tm.len() == 0 or tm.max_cov_id() < self.num_covariates()
 
     def account_for_transformer_intervals(self, cov_id_to_interval: bas.Intervals) -> Polynomial:
         result = polynomial_with_no_terms(cov_id_to_interval.len())
@@ -461,18 +471,17 @@ class Polynomial:
         return result
 
     def t_index_from_term(self, target: Term) -> Tuple[int, bool]:
-        for t_index,tm in enumerate(self.range_terms()):
+        for t_index, tm in enumerate(self.range_terms()):
             if tm.equals(target):
-                return t_index,True
+                return t_index, True
         return -777, False
-
 
     def range_terms(self) -> Iterator[Term]:
         for ct in self.range():
             yield ct.term()
 
     def add_term(self, coefficient: float, tm: Term):
-        self.m_t_index_to_coefficient_terms.add(coefficient_term_create(coefficient,tm))
+        self.m_t_index_to_coefficient_term.add(coefficient_term_create(coefficient, tm))
 
     def polynomial_structure_slow(self) -> PolynomialStructure:
         result = polynomial_structure_empty(self.num_covariates())
@@ -495,7 +504,7 @@ class Polynomial:
         for c, t in zip(other.range_coefficients(), other.range_terms()):
             result_t_index, ok = result.t_index_from_term(t)
             if ok:
-                result.increment_term(result_t_index, c)
+                result.increment_coefficient(result_t_index, c)
             else:
                 result.add_term(c, t)
         return result
@@ -506,8 +515,8 @@ class Polynomial:
             result.add(ct.times_scalar(scale))
         return result
 
-    def increment_coefficient(self, t_index:int, delta:float):
-        self.m_t_index_to_coefficient_terms.increment_coefficient(t_index, delta)
+    def increment_coefficient(self, t_index: int, delta: float):
+        self.m_t_index_to_coefficient_term.increment_coefficient(t_index, delta)
 
     def times_polynomial(self, other: Polynomial) -> Polynomial:
         result = polynomial_with_no_terms(self.num_covariates())
@@ -517,10 +526,7 @@ class Polynomial:
         return result
 
     def deep_copy(self) -> Polynomial:
-        return polynomial_create(self.polynomial_structure().deep_copy(), self.coefficients().deep_copy())
-
-    def increment_term(self, t_index: int, delta_coefficient: float):
-        self.m_t_index_to_coefficient.increment2(t_index, delta_coefficient)
+        return polynomial_create(self.num_covariates(), self.coefficient_terms().deep_copy())
 
     def times_term(self, tm: Term) -> Polynomial:
         result = polynomial_with_no_terms(self.num_covariates())
@@ -529,7 +535,7 @@ class Polynomial:
         return result
 
     def num_covariates(self) -> int:
-        return self.polynomial_structure().num_covariates()
+        return self.m_num_covariates
 
     def pretty_string(self, covariate_names: arr.Strings) -> str:
         return self.pretty_strings(covariate_names).concatenate_fancy('', '\n', '')
@@ -538,16 +544,16 @@ class Polynomial:
         return self.pretty_strings_array(covariate_names).pretty_strings()
 
     def pretty_strings_array(self, covariate_names: arr.Strings) -> arr.StringsArray:
-        coefficient_strings = self.coefficients().strings()
-        term_strings = self.polynomial_structure().pretty_weight_names(covariate_names)
+        coefficient_strings = self.coefficients_slow().strings()
+        term_strings = self.polynomial_structure_slow().pretty_weight_names(covariate_names)
         assert coefficient_strings.len() == term_strings.len()
         result = arr.strings_array_empty()
         for t_index in range(coefficient_strings.len()):
             c = coefficient_strings.string(t_index)
             t = term_strings.string(t_index)
 
-            possible_times = '*' if self.polynomial_structure().term(t_index).len() > 0 else ''
-            possible_term = t if self.polynomial_structure().term(t_index).len() > 0 else ''
+            possible_times = '*' if self.term(t_index).len() > 0 else ''
+            possible_term = t if self.term(t_index).len() > 0 else ''
             possible_plus = '+' if t_index < self.num_terms() - 1 else ''
             result.add(arr.strings_varargs(c, possible_times, possible_term, possible_plus))
         return result
@@ -566,25 +572,34 @@ class Polynomial:
         return result
 
     def num_terms(self) -> int:
-        return self.polynomial_structure().num_terms()
+        return self.coefficient_terms().len()
 
-    def range(self)->Iterator[CoefficientTerm]:
-        return self.m_t_index_to_coefficient_terms.range()
+    def range(self) -> Iterator[CoefficientTerm]:
+        return self.m_t_index_to_coefficient_term.range()
 
-    def add(self, ct:CoefficientTerm):
-        self.m_t_index_to_coefficient_terms.add(ct)
+    def add(self, ct: CoefficientTerm):
+        self.m_t_index_to_coefficient_term.add(ct)
+
+    def term(self, t_index: int) -> Term:
+        return self.coefficient_term(t_index).term()
+
+    def coefficient_term(self, t_index: int) -> CoefficientTerm:
+        return self.m_t_index_to_coefficient_term.coefficient_term(t_index)
+
+    def coefficient_terms(self) -> CoefficientTerms:
+        return self.m_t_index_to_coefficient_term
 
 
-def coefficient_terms_create(li:List[CoefficientTerm])->CoefficientTerms:
+def coefficient_terms_create(li: List[CoefficientTerm]) -> CoefficientTerms:
     return CoefficientTerms(li)
 
 
-def coefficient_terms_empty()->CoefficientTerms:
+def coefficient_terms_empty() -> CoefficientTerms:
     return coefficient_terms_create([])
 
 
 def polynomial_with_no_terms(n_covariates: int) -> Polynomial:
-    return polynomial_create(coefficient_terms_empty())
+    return polynomial_create(n_covariates, coefficient_terms_empty())
 
 
 def term_with_single_power(p: Factor) -> Term:
@@ -618,6 +633,7 @@ def polynomial_one(n_covariates: int) -> Polynomial:
 
 
 def floater_glm_create(ps: PolynomialStructure, ws: GenWeights) -> FloaterGlm:
+    ws.assert_ok()
     return FloaterGlm(ps, ws)
 
 
@@ -629,6 +645,7 @@ class FloaterClassGlm(lea.FloaterClass):
     def train(self, inputs: noo.FloatRecords, output: dat.Column) -> FloaterGlm:
         pd = poly_data_from_float_records(inputs, self.polynomial_degree())
         ws = gen_weights_from_training(pd.term_records(), output)
+        ws.assert_ok()
         return floater_glm_create(pd.polynomial_structure(), ws)
 
     def name_as_string(self) -> str:
@@ -654,11 +671,14 @@ def model_class_glm(polynomial_degree: int) -> lea.ModelClassFloater:
     return lea.model_class_from_floater_class(floater_class_glm(polynomial_degree))
 
 
-def polynomial_create(n_covariates:int,cts:CoefficientTerms) -> Polynomial:
-    return Polynomial(n_covariates,cts)
+def polynomial_create(n_covariates: int, cts: CoefficientTerms) -> Polynomial:
+    return Polynomial(n_covariates, cts)
 
 
 class FloaterGlm(lea.Floater):
+
+    def distribution_description(self):
+        return self.gen_weights().distribution_description()
 
     def loosely_equals(self, other: Floater) -> bool:
         if not isinstance(other, FloaterGlm):
@@ -914,6 +934,7 @@ class GenWeights(ABC):
                 assert math.fabs(ccc) > 1e-20
                 h_star = -bbb / ccc
                 assert isinstance(ws, GenWeights)
+
                 ws2 = ws.deep_copy()
                 assert isinstance(ws2, GenWeights)
                 ws2.increment(weight_index, h_star)
@@ -991,6 +1012,10 @@ class GenWeights(ABC):
     def loosely_equals(self, other) -> bool:
         pass
 
+    @abstractmethod
+    def distribution_description(self) -> dis.DistributionDescription:
+        pass
+
 
 def q_from_y(y_k: bool) -> float:
     return -1.0 if y_k else 1.0
@@ -1004,7 +1029,18 @@ def pretty_strings_from_weights(weight_names: arr.Strings, weights: arr.Floats) 
     return result.pretty_strings()
 
 
+def coefficient_terms_from_polynomial_structure(ps: PolynomialStructure, coefficients: arr.Floats) -> CoefficientTerms:
+    result = coefficient_terms_empty()
+    for t, coefficient in zip(ps.range_terms(), coefficients.range2()):
+        ct = coefficient_term_create(coefficient, t)
+        result.add(ct)
+    return result
+
+
 class GenWeightsLogistic(GenWeights):
+    def distribution_description(self) -> dis.DistributionDescription:
+        return dis.distribution_description_binomial()
+
     def loosely_equals(self, other: GenWeights) -> bool:
         if not isinstance(other, GenWeightsLogistic):
             return False
@@ -1013,8 +1049,9 @@ class GenWeightsLogistic(GenWeights):
         return self.m_weight_index_to_floats.loosely_equals(other.m_weight_index_to_floats)
 
     def weight_values(self, ps: PolynomialStructure, scaling_intervals: bas.Intervals) -> arr.Floats:
-        p = polynomial_create(ps, self.floats())
-        return p.account_for_transformer_intervals(scaling_intervals).coefficients()
+        cts = coefficient_terms_from_polynomial_structure(ps, self.floats())
+        p = polynomial_create(ps.num_covariates(), cts)
+        return p.account_for_transformer_intervals(scaling_intervals).coefficients_slow()
 
     def num_weight_indexes(self):
         return self.floats().len()
@@ -1088,7 +1125,15 @@ class GenWeightsLogistic(GenWeights):
         return -math.log(fk_of_minus_beta)
 
 
+def polynomial_from_polynomial_structure(ps: PolynomialStructure, coefficients: arr.Floats) -> Polynomial:
+    cts = coefficient_terms_from_polynomial_structure(ps, coefficients)
+    return polynomial_create(ps.num_covariates(), cts)
+
+
 class GenWeightsLinear(GenWeights):
+    def distribution_description(self) -> dis.DistributionDescription:
+        return dis.distribution_description_gaussian()
+
     def loosely_equals(self, other: GenWeights) -> bool:
         if not isinstance(other, GenWeightsLinear):
             return False
@@ -1097,8 +1142,8 @@ class GenWeightsLinear(GenWeights):
             other.m_weight_index_to_float)
 
     def weight_values(self, ps: PolynomialStructure, scaling_intervals: bas.Intervals) -> arr.Floats:
-        p = polynomial_create(ps, self.floats())
-        return p.account_for_transformer_intervals(scaling_intervals).coefficients()
+        p = polynomial_from_polynomial_structure(ps, self.floats())
+        return p.account_for_transformer_intervals(scaling_intervals).coefficients_slow()
 
     def num_weight_indexes(self):
         return self.floats().len()
@@ -1176,6 +1221,9 @@ def gen_weights_linear_all_zero(n_terms: int) -> GenWeightsLinear:
 
 
 class GenWeightsMultinomial(GenWeights):
+    def distribution_description(self) -> dis.DistributionDescription:
+        return dis.distribution_description_multinomial(self.valnames())
+
     def loosely_equals(self, other: GenWeights) -> bool:
         if not isinstance(other, GenWeightsMultinomial):
             return False
@@ -1190,10 +1238,10 @@ class GenWeightsMultinomial(GenWeights):
         return True
 
     def weight_values(self, ps: PolynomialStructure, scaling_intervals: bas.Intervals) -> arr.Floats:
-        result = arr.floats_empty(self.num_values()*self.num_terms())
+        result = arr.floats_empty(self.num_values() * self.num_terms())
         for weights in self.fmat().range_rows():
-            p = polynomial_create(ps, weights)
-            coefficients = p.account_for_transformer_intervals(scaling_intervals).coefficients()
+            p = polynomial_from_polynomial_structure(ps, weights)
+            coefficients = p.account_for_transformer_intervals(scaling_intervals).coefficients_slow()
             for c in coefficients.range2():
                 result.add(c)
         assert result.is_filled()
@@ -1291,6 +1339,7 @@ class GenWeightsMultinomial(GenWeights):
         return result
 
     def __init__(self, vns: dat.Valnames, value_to_term_num_to_weight: arr.Fmat, ):
+        value_to_term_num_to_weight.assert_ok()
         self.m_valnames = vns
         self.m_value_to_term_num_to_weight = value_to_term_num_to_weight
         self.assert_ok()
@@ -1353,11 +1402,11 @@ def unit_test():
     fg = fgc.train(inputs_as_named_float_records.float_records(), output.column(0))
     gw = fg.gen_weights()
     assert isinstance(gw, GenWeightsLinear)
-    p = polynomial_create(fg.polynomial_structure(), gw.floats())
+    p = polynomial_from_polynomial_structure(fg.polynomial_structure(), gw.floats())
     p2 = p.account_for_transformer_intervals(td.input_intervals())
     p2.assert_ok()
     true_weights = arr.floats_varargs(50.0, 0.1, 0.0)
-    assert true_weights.distance_to(p2.coefficients()) < 0.3
+    assert true_weights.distance_to(p2.coefficients_slow()) < 0.5
 
 
 class PiClassGlm(pic.PiClass):
@@ -1371,7 +1420,7 @@ class PiClassGlm(pic.PiClass):
     def choose(self, train: dat.LearnData, test: dat.LearnData) -> pic.TestResults:
         trs = pic.test_results_empty()
         max_degree = 2
-        for degree in range(max_degree+1):
+        for degree in range(max_degree + 1):
             trs.add_experiment(model_class_glm(degree), train, test)
         return trs
 

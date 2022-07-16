@@ -72,7 +72,7 @@ def test_q3():
 
 
 def run():
-    if bas.expensive_assertions:
+    if bas.expensive_assertions2:
         print("**** WARNING: Expensive Assertions switched on")
     print('*******************************************************************')
     unit_tests()
@@ -97,11 +97,12 @@ def run():
     assert isinstance(inputs, dat.Datset)
 
     mc, mod = lin.piclass_glm().train(inputs, output)
+    out_name = output.colname(0).string()
     print(
-        f"Here's the model CLASS we learned to predict {output.colname(0).string()} from {inputs.colnames().pretty_string()}")
+        f"Here's the model CLASS we learned to predict {out_name} from {inputs.colnames().pretty_string()}")
     mc.explain()
     print(
-        f"Here's the model we learned to predict {output.colname(0).string()} from {inputs.colnames().pretty_string()}")
+        f"Here's the model we learned to predict {out_name} from {inputs.colnames().pretty_string()}")
     mod.explain()
     plo.show_model(mod, inputs, output)
     check = mc.train(inputs, output)
@@ -147,7 +148,8 @@ def run():
 
     finish_time = time.perf_counter()
 
-    print(f"That took {finish_time-start_time} seconds")
+    print(f"That took {finish_time - start_time} seconds")
+
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':

@@ -126,7 +126,7 @@ class Transformer(ABC):
 
     def transform_float(self, x) -> arr.Floats:
         bas.my_error(f'{self} base')
-        return arr.floats_empty()
+        return arr.floats_default()
 
     @abstractmethod
     def scaling_intervals(self):
@@ -136,8 +136,21 @@ class Transformer(ABC):
     def loosely_equals(self, other: Transformer) -> bool:
         pass
 
+    def num_floats(self) -> int:
+        result = self.num_float_columns()
+        if bas.expensive_assertions2:
+            assert result == self.scaling_intervals().len()
+        return result
+
+    @abstractmethod
+    def num_float_columns(self) -> int:
+        pass
+
 
 class CatTransformer(Transformer):
+    def num_float_columns(self) -> int:
+        return self.m_valname_encoder.num_encodings()
+
     def loosely_equals(self, other: Transformer) -> bool:
         if not isinstance(other, CatTransformer):
             return False
@@ -171,7 +184,7 @@ class CatTransformer(Transformer):
         result = arr.floats_all_zero(self.num_encodings())
         encoding, ok = self.encoding_from_valname(vn)
         if ok:
-            result.set(encoding, 1.0)
+            result.set2(encoding, 1.0)
         return result
 
     def transform_atom(self, a: dat.Atom) -> arr.Floats:
@@ -208,6 +221,9 @@ def transformer_from_cats(cn: dat.Colname, cts: dat.Cats) -> CatTransformer:
 
 
 class FloatTransformer(Transformer):
+    def num_float_columns(self) -> int:
+        return 1
+
     def loosely_equals(self, other: Transformer) -> bool:
         if not isinstance(other, FloatTransformer):
             return False
@@ -264,6 +280,9 @@ def float_transformer_create(nn: str, fs: arr.Floats) -> FloatTransformer:
 
 
 class BoolTransformer(Transformer):
+    def num_float_columns(self) -> int:
+        return 1
+
     def loosely_equals(self, other: Transformer) -> bool:
         if not isinstance(other, BoolTransformer):
             return False
@@ -379,10 +398,11 @@ class Transformers:
             yield tf
 
     def float_record_from_record(self, row: dat.Record) -> FloatRecord:
-        result = arr.floats_empty()
+        result = arr.floats_empty(self.float_record_length())
         for a, tf in zip(row.range(), self.range()):
             fs = tf.transform_atom(a)
-            result.append(fs)
+            for f in fs.range2():
+                result.add(f)
         return float_record_create(result)
 
     def scaling_intervals(self) -> bas.Intervals:
@@ -400,6 +420,12 @@ class Transformers:
                 return False
 
         return True
+
+    def float_record_length(self) -> int:
+        result = 0
+        for t in self.range():
+            result += t.num_floats()
+        return result
 
 
 def transformers_empty():
@@ -510,12 +536,12 @@ class FloatRecord:
         return self.m_floats.len()
 
     def float(self, cov_id: int) -> float:
-        return self.m_floats.float(cov_id)
+        return self.m_floats.float2(cov_id)
 
     def loosely_equals(self, other: FloatRecord) -> bool:
         return self.floats().loosely_equals(other.floats())
 
-    def times(self, fs: arr.Floats) -> float:
+    def dot_product(self, fs: arr.Floats) -> float:
         return self.floats().dot_product(fs)
 
 
@@ -560,7 +586,7 @@ class FloatRecords:
             yield fr
 
     def column_as_floats(self, term_num: int) -> arr.Floats:
-        result = arr.floats_empty()
+        result = arr.floats_empty(self.num_rows())
         for fr in self.range():
             result.add(fr.float(term_num))
         return result
@@ -569,10 +595,10 @@ class FloatRecords:
         assert self.num_cols() == fr.len()
         self.m_list.append(fr)
 
-    def times(self, fs: arr.Floats) -> arr.Floats:
-        result = arr.floats_empty()
+    def dot_products(self, fs: arr.Floats) -> arr.Floats:
+        result = arr.floats_empty(self.num_rows())
         for fr in self.range():
-            result.add(fr.times(fs))
+            result.add(fr.dot_product(fs))
         return result
 
 

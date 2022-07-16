@@ -328,6 +328,9 @@ class Valnames:
 
         return True
 
+    def string(self) -> str:
+        return self.strings().concatenate_fancy('{', ',', '}')
+
 
 class Cats:
     def __init__(self, row_to_value: arr.Ints, vns: Valnames):
@@ -443,7 +446,7 @@ def cats_from_strings(row_to_string: arr.Strings) -> Cats:
 
     result = cats_create(row_to_sorted_value, sorted_value_to_name)
 
-    if bas.expensive_assertions:
+    if bas.expensive_assertions2:
         for original_string, final_valname in zip(row_to_string.range(), result.range_valnames_by_row()):
             assert original_string == final_valname.string()
 
@@ -1043,8 +1046,9 @@ class Datset:
         for cn in cns.range():
             nc, ok = self.named_column_from_colname(cn)
             if not ok:
+                s = self.colnames().pretty_string()
                 return datset_default(), bas.errmess_error(
-                    f'datset has columns {self.colnames().pretty_string()} and does not contain column named {cn.string()}')
+                    f'datset has columns {s} and does not contain column named {cn.string()}')
             if result.contains_colname(nc.colname()):
                 return datset_default(), bas.errmess_error(f'you cannot repeat column named {cn.string()}')
             result.add(nc)

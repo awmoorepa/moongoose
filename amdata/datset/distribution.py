@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import math
 from abc import abstractmethod, ABC
 from typing import Tuple
@@ -7,6 +8,23 @@ from typing import Tuple
 import datset.amarrays as arr
 import datset.ambasic as bas
 import datset.dset as dat
+
+
+class DistributionType(enum.Enum):
+    binomial = 0
+    multinomial = 1
+    gaussian = 2
+
+    def string(self) -> str:
+        if self == DistributionType.multinomial:
+            return 'multinomial'
+        elif self == DistributionType.binomial:
+            return 'binomial'
+        elif self == DistributionType.gaussian:
+            return 'gaussian'
+        else:
+            bas.my_error('bad distribution type')
+            return ''
 
 
 def binomial_default() -> Binomial:
@@ -21,6 +39,44 @@ def multinomial_default():
     vns = dat.valnames_from_strings(arr.strings_varargs('cat', 'dog'))
     probs = arr.floats_varargs(0.3, 0.7)
     return multinomial_create(vns, probs)
+
+
+class DistributionDescription:
+    def __init__(self, dt: DistributionType, vns: dat.Valnames):
+        self.m_distribution_type = dt
+        self.m_valnames = vns
+        self.assert_ok()
+
+    def distribution_type(self) -> DistributionType:
+        return self.m_distribution_type
+
+    def assert_ok(self):
+        assert isinstance(self.m_distribution_type, DistributionType)
+        assert isinstance(self.m_valnames, dat.Valnames)
+        self.m_valnames.assert_ok()
+        if self.m_distribution_type != DistributionType.multinomial:
+            assert self.m_valnames.len() == 0
+
+    def num_values(self) -> int:
+        return self.valnames().len()
+
+    def valnames(self) -> dat.Valnames:
+        assert self.distribution_type() == DistributionType.multinomial
+        return self.m_valnames
+
+    def string(self) -> str:
+        extras = ''
+        if self.distribution_type() == DistributionType.multinomial:
+            extras = self.valnames().string()
+
+        return f'{self.distribution_type().string()}({extras})'
+
+    def equals(self, other:DistributionDescription)->bool:
+        result = self.distribution_type() == other.distribution_type()
+        if self.distribution_type() == DistributionType.multinomial:
+            result = result and self.valnames().equals(other.valnames())
+
+        return result
 
 
 class Distribution(ABC):
@@ -44,8 +100,27 @@ class Distribution(ABC):
     def loglike(self, a: dat.Atom) -> float:
         pass
 
+    @abstractmethod
+    def distribution_description(self) -> DistributionDescription:
+        pass
+
+
+def distribution_description_create(dt: DistributionType, vns: dat.Valnames) -> DistributionDescription:
+    return DistributionDescription(dt, vns)
+
+
+def distribution_description_without_valnames(dt: DistributionType) -> DistributionDescription:
+    return distribution_description_create(dt, dat.valnames_empty())
+
+
+def distribution_description_gaussian():
+    return distribution_description_without_valnames(DistributionType.gaussian)
+
 
 class Gaussian(Distribution):
+    def distribution_description(self) -> DistributionDescription:
+        return distribution_description_gaussian()
+
     def loglike(self, a: dat.Atom) -> float:
         return self.loglike_of_sample(a.float())
 
@@ -77,7 +152,14 @@ class Gaussian(Distribution):
         return log_one_over_sigma_root_two_pi - delta * delta
 
 
+def distribution_description_binomial():
+    return distribution_description_without_valnames(DistributionType.binomial)
+
+
 class Binomial(Distribution):
+    def distribution_description(self) -> DistributionDescription:
+        return distribution_description_binomial()
+
     def loglike(self, a: dat.Atom) -> float:
         b = a.bool()
         p_true = self.theta()
@@ -107,6 +189,9 @@ log_of_prob_of_zero: float = -1.0e6
 
 
 class Multinomial(Distribution):
+    def distribution_description(self) -> DistributionDescription:
+        return distribution_description_multinomial(self.valnames())
+
     def loglike(self, a: dat.Atom) -> float:
         value, ok = self.value_from_valname(a.valname())
         if not ok:
@@ -149,7 +234,7 @@ class Multinomial(Distribution):
 
     def prob(self, value: int) -> float:
         assert 0 <= value < self.len()
-        return self.floats().float(value)
+        return self.floats().float2(value)
 
     def value_from_valname(self, target: dat.Valname) -> Tuple[int, bool]:
         return self.valnames().value(target)
@@ -177,3 +262,7 @@ def multinomial_from_binomial(bi: Binomial) -> Multinomial:
     probs.add(p1)
     vns = dat.valnames_from_strings(arr.strings_varargs('False', 'True'))
     return multinomial_create(vns, probs)
+
+
+def distribution_description_multinomial(vns: dat.Valnames) -> DistributionDescription:
+    return distribution_description_create(DistributionType.multinomial, vns)

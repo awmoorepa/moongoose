@@ -42,7 +42,7 @@ class Floatvec:
         self.m_floats.assert_ok()
 
     def range(self) -> Iterator[float]:
-        return self.floats().range()
+        return self.floats().range2()
 
     def add(self, f: float):
         self.m_floats.add(f)
@@ -104,8 +104,8 @@ def floatvecs_empty(float_label: str, cat_label: str):
     return Floatvecs(float_label, cat_label, [])
 
 
-def floatvec_empty(label: str) -> Floatvec:
-    return floatvec_create(label, arr.floats_empty())
+def floatvec_empty(n_rows: int, label: str) -> Floatvec:
+    return floatvec_create(label, arr.floats_empty(n_rows))
 
 
 # Catvec is not a simple analog of dat.Cats because it treats Bools just like Cats (with Valnames True and False etc.)
@@ -134,11 +134,14 @@ class Catvec:
     def label(self) -> str:
         return self.m_label
 
-    def floats_array(self, fv: Floatvec) -> arr.FloatsArray:
-        result = arr.floats_array_of_empties(self.num_values())
+    def value_to_floats(self, fv: Floatvec) -> arr.FloatsArray:
+        v2f = []
+        for v in range(self.num_values()):
+            v2f.append([])
+
         for v, f in zip(self.range_values_by_row(), fv.range()):
-            result.floats(v).add(f)
-        return result
+            v2f[v].append(f)
+        return arr.floats_array_from_list_of_lists(v2f)
 
     def range_values_by_value(self) -> Iterator[int]:
         return self.cats().range_values_by_value()
@@ -223,7 +226,7 @@ def show_ff(x: Floatvec, y: Floatvec):
 
 def show_fc(fv: Floatvec, cv: Catvec):
     fig, ax = plt.subplots()
-    fvs = cv.floats_array(fv)
+    fvs = cv.value_to_floats(fv)
     ax.hist(fvs.list_of_lists(), stacked=True, label=cv.names())
     ax.set_xlabel(fv.label())
     ax.set_ylabel(f'frequency({cv.label()})')
@@ -256,8 +259,8 @@ def show_cc(x: Catvec, y: Catvec):
 
 def show_ffc(x: Floatvec, y: Floatvec, z: Catvec):
     fig, ax = plt.subplots()
-    z_to_row_to_x = z.floats_array(x)
-    z_to_row_to_y = z.floats_array(y)
+    z_to_row_to_x = z.value_to_floats(x)
+    z_to_row_to_y = z.value_to_floats(y)
     for xs, ys, label in zip(z_to_row_to_x.range(), z_to_row_to_y.range(), z.names()):
         ax.scatter(xs.list(), ys.list(), label=label)
 
@@ -268,16 +271,17 @@ def show_ffc(x: Floatvec, y: Floatvec, z: Catvec):
 
 
 def linear_combination(cls: geo.Colors, fs: arr.Floats) -> geo.Color:
+    assert cls.len() == fs.len()
     result = geo.black()
-    for colo, f in zip(cls.range(), fs.range()):
+    for colo, f in zip(cls.range(), fs.range2()):
         result = result.plus(colo.times(f))
     return result
 
 
 def show_model_ffc(mod: lea.Model, x: Floatvec, y: Floatvec, z: Catvec):
     fig, ax = plt.subplots()
-    z_to_row_to_x = z.floats_array(x)
-    z_to_row_to_y = z.floats_array(y)
+    z_to_row_to_x = z.value_to_floats(x)
+    z_to_row_to_y = z.value_to_floats(y)
     cls = geo.color_cycle(z.num_values())
     for xs, ys, label, colo in zip(z_to_row_to_x.range(), z_to_row_to_y.range(), z.names(), cls.range()):
         ax.scatter(xs.list(), ys.list(), label=label, c=[colo.list()])
@@ -285,7 +289,6 @@ def show_model_ffc(mod: lea.Model, x: Floatvec, y: Floatvec, z: Catvec):
     xlo, xhi = ax.xaxis.get_data_interval()
     ylo, yhi = ax.yaxis.get_data_interval()
 
-    assert z.num_values() == 3
     n_cells_per_edge = 30
     row_to_col_to_rgb = []
     for row in range(n_cells_per_edge):
@@ -366,8 +369,8 @@ def show_model_ff(mod: lea.Model, x: Floatvec, y: Floatvec):
     print(f'lo={lo}, hi={hi}')
     xs = arr.floats_from_range(lo, hi, 101)
     print(f'xs = {xs.pretty_string()}')
-    ys = arr.floats_empty()
-    for x in xs.range():
+    ys = arr.floats_empty(xs.len())
+    for x in xs.range2():
         d = mod.predict_from_record(dat.record_singleton(dat.atom_from_float(x)))
         assert isinstance(d, dis.Gaussian)
         y = d.mean()
@@ -379,7 +382,7 @@ def show_model_ff(mod: lea.Model, x: Floatvec, y: Floatvec):
 
 def show_model_fc(mod: lea.Model, x: Floatvec, y: Catvec):
     fig, (ax_top, ax_bottom) = plt.subplots(2)
-    fvs = y.floats_array(x)
+    fvs = y.value_to_floats(x)
     ax_bottom.hist(fvs.list_of_lists(), stacked=True, label=y.names())
     ax_bottom.set_xlabel(x.label())
     ax_bottom.set_ylabel(f'frequency({y.label()})')
@@ -388,25 +391,41 @@ def show_model_fc(mod: lea.Model, x: Floatvec, y: Catvec):
     lo, hi = x.tidy_extremes()
     xs = arr.floats_from_range(lo, hi, 101)
 
-    value_to_row_to_prob = arr.floats_array_of_empties(y.num_values())
+    row_to_value_to_prob = arr.floats_array_empty()
 
-    for x in xs.range():
+    length_of_value_to_prob: int
+    dd = mod.distribution_description()
+    dt = dd.distribution_type()
+
+    if dt == dis.DistributionType.multinomial:
+        length_of_value_to_prob = dd.num_values()
+    elif dt == dis.DistributionType.binomial:
+        length_of_value_to_prob = 2
+    else:
+        bas.my_error(f"Can't do this kind of plot for distribution type {dt.string()}")
+        length_of_value_to_prob = -77
+
+    for x in xs.range2():
         d = mod.predict_from_record(dat.record_singleton(dat.atom_from_float(x)))
 
-        if isinstance(d, dis.Multinomial):
+        if dt == dis.DistributionType.multinomial:
+            assert isinstance(d, dis.Multinomial)
             value_to_prob = d.floats()
-        elif isinstance(d, dis.Binomial):
+        elif dt == dis.DistributionType.binomial:
+            assert isinstance(d, dis.Binomial)
             p = d.theta()
             value_to_prob = arr.floats_varargs(1 - p, p)
         else:
             bas.my_error('bad output column for fc model')
-            value_to_prob = arr.floats_empty()
+            value_to_prob = arr.floats_default()
 
-        for prob, row_to_prob in zip(value_to_prob.range(), value_to_row_to_prob.range()):
-            row_to_prob.add(prob)
+        assert value_to_prob.len() == length_of_value_to_prob
 
-    for row_to_prob, label in zip(value_to_row_to_prob.range(), y.names()):
-        assert isinstance(xs, arr.Floats)
+        row_to_value_to_prob.add(value_to_prob)
+
+    r2v2p = arr.fmat_from_rows(length_of_value_to_prob, row_to_value_to_prob)
+
+    for row_to_prob, label in zip(r2v2p.range_columns(), y.names()):
         assert isinstance(row_to_prob, arr.Floats)
         assert xs.len() == row_to_prob.len()
         ax_top.plot(xs.list(), row_to_prob.list(), label=label)
@@ -418,6 +437,8 @@ def show_model_fc(mod: lea.Model, x: Floatvec, y: Catvec):
 
 def compute_x_to_y_to_prob(input_valnames: dat.Valnames, mod: lea.Model) -> arr.Fmat:
     x_to_y_to_prob = arr.floats_array_empty()
+    dd = mod.distribution_description()
+    assert dd.distribution_type() == dis.DistributionType.multinomial
 
     for vn in input_valnames.range():
         a = dat.atom_from_valname(vn)
@@ -425,7 +446,7 @@ def compute_x_to_y_to_prob(input_valnames: dat.Valnames, mod: lea.Model) -> arr.
         assert isinstance(mu, dis.Multinomial)
         x_to_y_to_prob.add(mu.floats())
 
-    return arr.fmat_from_floats_array(x_to_y_to_prob)
+    return arr.fmat_from_rows(dd.num_values(), x_to_y_to_prob)
 
 
 def show_model_cc(mod: lea.Model, x: Catvec, y: Catvec):

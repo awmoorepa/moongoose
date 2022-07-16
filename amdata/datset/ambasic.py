@@ -397,7 +397,7 @@ def unit_test():
     test_tidiest()
 
 
-expensive_assertions = False
+expensive_assertions2 = True
 
 
 def interval_unit() -> Interval:

@@ -141,7 +141,7 @@ class Color:
     def lighten(self) -> Color:
         return self.average_with(white())
 
-    def average_with(self, other) -> Color:
+    def average_with(self, other: Color) -> Color:
         return self.times(0.5).plus(other.times(0.5))
 
     def rgb(self) -> Tuple[float, float, float]:
