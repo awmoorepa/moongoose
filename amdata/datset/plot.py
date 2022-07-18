@@ -282,6 +282,10 @@ def show_model_ffc(mod: lea.Model, x: Floatvec, y: Floatvec, z: Catvec):
     fig, ax = plt.subplots()
     z_to_row_to_x = z.value_to_floats(x)
     z_to_row_to_y = z.value_to_floats(y)
+    dd = mod.distribution_description()
+    assert dd.distribution_type() == dis.DistributionType.multinomial
+    n_model_values = dd.num_values()
+    novel_valnames = z.valnames().set_minus()
     cls = geo.color_cycle(z.num_values())
     for xs, ys, label, colo in zip(z_to_row_to_x.range(), z_to_row_to_y.range(), z.names(), cls.range()):
         ax.scatter(xs.list(), ys.list(), label=label, c=[colo.list()])

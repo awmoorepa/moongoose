@@ -12,6 +12,7 @@ import datset.linear as lin
 import datset.numset as num
 import datset.plot as plo
 import datset.learn as lea
+import datset.geometry as geo
 
 
 def unit_tests():
@@ -23,52 +24,6 @@ def unit_tests():
     lin.unit_test()
 
 
-def quadratic_test():
-    ds = dat.datset_of_random_unit_floats('a', 100)
-    ds.define_column('b', '*', 'a', 'a')
-    ds.explain()
-    mod = lin.model_class_glm(2).train(ds.subset('a'), ds.subset('b'))
-    mod.explain()
-    plo.show_model(mod, ds.subset('a'), ds.subset('b'))
-
-
-def quadratic_logistic_test():
-    ds = dat.datset_of_random_unit_floats('a', 30)
-    bs = arr.bools_empty()
-    for a in ds.range_floats('a'):
-        bs.add(0.25 < a < 0.65)
-    ds.add_bools_column('b', bs)
-    ds.explain()
-    mod = lin.model_class_glm(2).train(ds.subset('a'), ds.subset('b'))
-    mod.explain()
-    plo.show_model(mod, ds.subset('a'), ds.subset('b'))
-
-
-def test_q3():
-    n_records = 40
-    ds = dat.datset_of_random_unit_floats('x', n_records).appended_with(
-        dat.datset_of_random_unit_floats('y', n_records))
-    ss = arr.strings_empty()
-
-    for x, y in zip(ds.range_floats('x'), ds.range_floats('y')):
-        dx = x - 0.5
-        dy = y - 0.5
-        c: str
-        if dx * dx + dy * dy < 0.25 * 0.25:
-            c = 'middle'
-        elif dx > 0 and dy > 0:
-            c = 'main'
-        else:
-            c = 'minor'
-        ss.add(c)
-
-    cs = dat.cats_from_strings(ss)
-    col = dat.column_from_cats(cs)
-    output = dat.datset_from_single_column(dat.colname_create('class'), col)
-
-    mod = lin.model_class_glm(1).train(ds, output)
-    plo.show_model(mod, ds, output)
-    mod.explain()
 
 
 def run():
@@ -80,6 +35,8 @@ def run():
     print(f'Hello!')  # Press Ctrl+F8 to toggle the breakpoint.
     quadratic_test()
     quadratic_logistic_test()
+    multiclass_misleading_test()
+
     a = dat.load("banana.csv")
     print('loaded successfully!')
     a.assert_ok()
@@ -111,7 +68,7 @@ def run():
 
     assert mod.loosely_equals(check)
 
-    n = 100
+    n = 250
     d = dat.datset_of_random_unit_floats('a', n).appended_with(dat.datset_of_random_unit_floats('b', n))
     c = arr.strings_empty()
 

@@ -10,6 +10,7 @@ import datset.distribution as dis
 import datset.dset as dat
 import datset.learn as lea
 import datset.numset as noo
+import datset.plot as plo
 import datset.piclass as pic
 from datset.learn import Floater
 
@@ -1382,6 +1383,39 @@ def gen_weights_multinomial_all_zero(vns: dat.Valnames, n_terms: int) -> GenWeig
     return gen_weights_multinomial_create(vns, arr.fmat_of_zeroes(vns.len(), n_terms))
 
 
+def mismatched_predict_output_test():
+    n = 30
+    ads = dat.datset_of_random_unit_floats('a', n)
+    bds = dat.datset_of_random_unit_floats('b', n)
+    ds = ads.appended_with(bds)
+    c = arr.strings_empty()
+    for a, b in zip(ds.range_floats('a'), ds.range_floats('b')):
+        if a < b:
+            c.add('bottom_right')
+        elif bas.range_random(0.0, 1.0) < 0.4:
+            c.add('heads')
+        else:
+            c.add('tails')
+
+    cds = dat.datset_of_strings('c', c)
+
+    mod = model_class_glm(2).train(ds, cds)
+    mod.explain()
+
+    atest = dat.datset_of_random_unit_floats('a', n)
+    btest = dat.datset_of_random_unit_floats('b', n)
+    c_strings = arr.strings_all_constant(n, 'new_value')
+    ctest = dat.datset_of_strings('c', c_strings)
+
+    test_inputs = atest.appended_with(btest)
+
+    ll = mod.loglike_batch(test_inputs, ctest)
+
+    print(f'll batch = {ll}')
+
+    plo.show_model(mod, test_inputs, ctest)
+
+
 def unit_test():
     s = """
     a,b,c,y
@@ -1408,6 +1442,11 @@ def unit_test():
     true_weights = arr.floats_varargs(50.0, 0.1, 0.0)
     assert true_weights.distance_to(p2.coefficients_slow()) < 0.5
 
+    quadratic_test()
+    quadratic_logistic_test()
+    test_q3()
+    mismatched_predict_output_test()
+
 
 class PiClassGlm(pic.PiClass):
     def __init__(self, name: str):
@@ -1427,3 +1466,48 @@ class PiClassGlm(pic.PiClass):
 
 def piclass_glm() -> PiClassGlm:
     return PiClassGlm('glm')
+
+
+def quadratic_test():
+    ds = dat.datset_of_random_unit_floats('a', 100)
+    ds.define_column('b', '*', 'a', 'a')
+    ds.explain()
+    mod = model_class_glm(2).train(ds.subset('a'), ds.subset('b'))
+    mod.explain()
+
+
+def quadratic_logistic_test():
+    ds = dat.datset_of_random_unit_floats('a', 30)
+    bs = arr.bools_empty()
+    for a in ds.range_floats('a'):
+        bs.add(0.25 < a < 0.65)
+    ds.add_bools_column('b', bs)
+    ds.explain()
+    mod = model_class_glm(2).train(ds.subset('a'), ds.subset('b'))
+    mod.explain()
+
+
+def test_q3():
+    n_records = 40
+    ds = dat.datset_of_random_unit_floats('x', n_records).appended_with(
+        dat.datset_of_random_unit_floats('y', n_records))
+    ss = arr.strings_empty()
+
+    for x, y in zip(ds.range_floats('x'), ds.range_floats('y')):
+        dx = x - 0.5
+        dy = y - 0.5
+        c: str
+        if dx * dx + dy * dy < 0.25 * 0.25:
+            c = 'middle'
+        elif dx > 0 and dy > 0:
+            c = 'main'
+        else:
+            c = 'minor'
+        ss.add(c)
+
+    cs = dat.cats_from_strings(ss)
+    col = dat.column_from_cats(cs)
+    output = dat.datset_from_single_column(dat.colname_create('class'), col)
+
+    mod = model_class_glm(1).train(ds, output)
+    mod.explain()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from abc import ABC, abstractmethod
 from typing import Tuple, List, Iterator
 
 import numpy as np
@@ -62,8 +63,8 @@ class Bools:
         return result
 
 
-def floats_from_ndarray(nda: np.ndarray) -> Floats:
-    return Floats(len(nda), nda)
+def floats_numpy_from_ndarray(nda: np.ndarray) -> FloatsNumpy:
+    return FloatsNumpy(len(nda), nda)
 
 
 def ndarray_from_list_of_floats(li: List[float]) -> np.ndarray:
@@ -78,13 +79,13 @@ def ndarray_from_list_of_floats(li: List[float]) -> np.ndarray:
     return nda
 
 
-def floats_from_list2(li: List[float]) -> Floats:
+def floats_numpy_from_list2(li: List[float]) -> FloatsNumpy:
     nda = ndarray_from_list_of_floats(li)
-    return floats_from_ndarray(nda)
+    return floats_numpy_from_ndarray(nda)
 
 
-def floats_empty(capacity: int) -> Floats:
-    return Floats(capacity, np.empty(0))
+def floats_numpy_empty(capacity: int) -> FloatsNumpy:
+    return FloatsNumpy(capacity, np.empty(0))
 
 
 def ints_from_ndarray(nda: np.ndarray) -> Ints:
@@ -100,7 +101,187 @@ def ints_from_ndarray(nda: np.ndarray) -> Ints:
     return result
 
 
-class Floats:
+class Floats(ABC):
+    @abstractmethod
+    def assert_ok(self):
+        pass
+
+    @abstractmethod
+    def is_filled(self) -> bool:
+        pass
+
+    @abstractmethod
+    def range2(self) -> Iterator[float]:
+        pass
+
+    @abstractmethod
+    def sum(self) -> float:
+        pass
+
+    @abstractmethod
+    def len(self) -> int:
+        pass
+
+    def extremes(self) -> bas.Interval:
+        assert self.is_filled()
+        return bas.interval_create(self.min(), self.max())
+
+    @abstractmethod
+    def set2(self, index: int, v: float):
+        pass
+
+    def is_loosely_zero(self) -> bool:
+        epsilon = 1e-5
+        return self.magnitude() < epsilon
+
+    def loosely_equals(self, other: Floats) -> bool:
+        return self.minus(other).magnitude() < max(self.magnitude(), other.magnitude(), 1.0) * 1e-5
+
+    def increment2(self, i: int, delta: float):
+        self.set2(i, self.float2(i) + delta)
+
+    @abstractmethod
+    def dot_product(self, other: Floats) -> float:
+        pass
+
+    @abstractmethod
+    def minus(self, other: Floats) -> Floats:
+        pass
+
+    def pretty_string(self) -> str:
+        ss = self.strings()
+        assert isinstance(ss, Strings)
+        return ss.concatenate_fancy('{', ',', '}')
+
+    def strings(self) -> Strings:
+        result = strings_empty()
+        for x in self.range2():
+            result.add(bas.string_from_float(x))
+        assert isinstance(result, Strings)
+        return result
+
+    def deep_copy(self) -> Floats:
+        pass
+
+    def squared(self) -> float:
+        return self.dot_product(self)
+
+    def tidy_surrounder(self) -> bas.Interval:
+        return self.extremes().tidy_surrounder()
+
+    def min(self) -> float:
+        return self.float2(self.argmin())
+
+    @abstractmethod
+    def argmin(self) -> int:
+        pass
+
+    def max(self) -> float:
+        return self.float2(self.argmax())
+
+    @abstractmethod
+    def argmax(self) -> int:
+        pass
+
+    def tidy_extremes(self) -> Tuple[float, float]:
+        return self.tidy_surrounder().extremes()
+
+    @abstractmethod
+    def plus(self, other: Floats) -> Floats:
+        pass
+
+    def subset(self, indexes: Ints) -> Floats:
+        assert self.is_filled()
+        result = floats_empty(indexes.len())
+        for i in indexes.range():
+            result.add(self.float2(i))
+        assert result.is_filled()
+        return result
+
+    @abstractmethod
+    def indexes_of_sorted(self) -> Ints:
+        pass
+
+    def without_leftmost_element(self) -> Floats:
+        return self.without_n_leftmost_elements(1)
+
+    def without_n_leftmost_elements(self, n: int) -> Floats:
+        assert n <= self.len()
+        result = floats_empty(self.len() - n)
+        for i in range(n, self.len()):
+            result.add(self.float2(i))
+        return result
+
+    @abstractmethod
+    def median(self) -> float:
+        pass
+
+    def sorted(self) -> Floats:
+        return self.subset(self.indexes_of_sorted())
+
+    @abstractmethod
+    def times_scalar(self, scale: float) -> Floats:
+        pass
+
+    @abstractmethod
+    def map_product_with(self, other: Floats) -> Floats:
+        pass
+
+    def is_loosely_constant(self) -> bool:
+        if self.len() < 2:
+            return True
+        return self.minus_scalar(self.float2(0)).magnitude() < max(self.magnitude(), 1.0) * 1e-5
+
+    def distance_to(self, other: Floats) -> float:
+        return math.sqrt(self.distance_squared_to(other))
+
+    def distance_squared_to(self, other: Floats) -> float:
+        return self.minus(other).sum_squares()
+
+    def mean(self) -> float:
+        assert self.len() > 0
+        return self.sum() / self.len()
+
+    @abstractmethod
+    def float2(self, i: int) -> float:
+        pass
+
+    def magnitude(self) -> float:
+        return math.sqrt(self.squared())
+
+    def minus_scalar(self, x: float) -> Floats:
+        return self.plus_scalar(-x)
+
+    @abstractmethod
+    def plus_scalar(self, x: float) -> Floats:
+        pass
+
+    def sum_squares(self) -> float:
+        return self.dot_product(self)
+
+    def appended_with(self, other: Floats) -> Floats:
+        assert self.is_filled()
+        assert other.is_filled()
+        result = floats_empty(self.len() + other.len())
+        for x in self.range2():
+            result.add(x)
+        for x in other.range2():
+            result.add(x)
+        return result
+
+    @abstractmethod
+    def add(self, f: float):
+        pass
+
+    def list(self) -> List[float]:
+        assert self.is_filled()
+        result = []
+        for x in self.range2():
+            result.append(x)
+        return result
+
+
+class FloatsNumpy(Floats):
     def __init__(self, capacity: int, nda: np.ndarray):
         n_filled = len(nda)
         assert n_filled <= capacity
@@ -119,6 +300,7 @@ class Floats:
         self.assert_ok()
 
     def assert_ok(self):
+        assert use_numpy
         assert isinstance(self.m_num_filled, int)
         assert isinstance(self.m_capacity, int)
         assert 0 <= self.m_num_filled <= self.m_capacity
@@ -154,20 +336,127 @@ class Floats:
         assert self.is_filled()
         return self.m_capacity
 
-    def extremes(self) -> bas.Interval:
-        assert self.is_filled()
-        return bas.interval_create(self.min(), self.max())
-
     def set2(self, index: int, v: float):
         assert 0 <= index < self.len()
         self.m_ndarray[index] = v
 
-    def is_loosely_zero(self) -> bool:
-        epsilon = 1e-5
-        return self.magnitude() < epsilon
+    def increment2(self, i: int, delta: float):
+        self.set2(i, self.float2(i) + delta)
 
-    def loosely_equals(self, other: Floats) -> bool:
-        return self.minus(other).magnitude() < max(self.magnitude(), other.magnitude(), 1.0) * 1e-5
+    def dot_product(self, other: FloatsNumpy) -> float:
+        assert self.len() == other.len()
+        assert self.is_filled()
+        assert other.is_filled()
+        return float(np.dot(self.m_ndarray, other.m_ndarray))
+
+    def minus(self, other: FloatsNumpy) -> Floats:
+        assert isinstance(other, Floats)
+        assert self.len() == other.len()
+        assert self.is_filled()
+        assert other.is_filled()
+        return floats_numpy_from_ndarray(np.subtract(self.m_ndarray, other.m_ndarray))
+
+    def deep_copy(self) -> Floats:
+        assert self.is_filled()
+        return floats_numpy_from_ndarray(np.copy(self.m_ndarray))
+
+    def argmin(self) -> int:
+        assert self.is_filled()
+        return int(np.argmin(self.m_ndarray))
+
+    def argmax(self) -> int:
+        return int(np.argmax(self.m_ndarray))
+
+    def plus(self, other: Floats) -> Floats:
+        assert self.is_filled()
+        assert isinstance(other, FloatsNumpy)
+        return floats_numpy_from_ndarray(np.add(self.m_ndarray, other.m_ndarray))
+
+    def indexes_of_sorted(self) -> Ints:
+        assert self.is_filled()
+        return ints_from_ndarray(np.argsort(self.m_ndarray))
+
+    def median(self) -> float:
+        assert self.is_filled()
+        return float(np.median(self.m_ndarray))
+
+    def times_scalar(self, scale: float) -> Floats:
+        assert self.is_filled()
+        return floats_numpy_from_ndarray(self.m_ndarray * scale)
+
+    def map_product_with(self, other: FloatsNumpy) -> Floats:
+        assert self.is_filled()
+        assert other.is_filled()
+        return floats_numpy_from_ndarray(np.multiply(self.m_ndarray, other.m_ndarray))
+
+    def float2(self, i: int) -> float:
+        return self.m_ndarray[i]
+
+    def plus_scalar(self, x: float) -> Floats:
+        assert self.is_filled()
+        result = np.copy(self.m_ndarray)
+        result[:] += x
+        return floats_numpy_from_ndarray(result)
+
+    def add(self, f: float):
+        assert isinstance(f, float)
+        assert self.m_num_filled < self.m_capacity
+        self.m_ndarray[self.m_num_filled] = f
+        self.m_num_filled += 1
+
+
+def floats_list_empty(capacity: int) -> FloatsList:
+    return FloatsList(capacity, [])
+
+
+def floats_list_from_list(li: List[float]) -> FloatsList:
+    return FloatsList(len(li), li)
+
+
+def floats_list_all_constant(n_elements: int, value: float) -> FloatsList:
+    result = floats_list_empty(n_elements)
+    for i in range(n_elements):
+        result.add(value)
+    return result
+
+
+class FloatsList(Floats):
+    def __init__(self, capacity: int, li: List[float]):
+        assert len(li) <= capacity
+        self.m_capacity = capacity
+        self.m_list = li
+        self.assert_ok()
+
+    def assert_ok(self):
+        assert not use_numpy
+        assert isinstance(self.m_capacity, int)
+        assert 0 <= self.num_filled() <= self.m_capacity
+        assert isinstance(self.m_list, list)
+        for f in self.m_list:
+            assert isinstance(f, float)
+
+    def is_filled(self) -> bool:
+        return self.num_filled() == self.m_capacity
+
+    def range2(self) -> Iterator[float]:
+        assert self.is_filled()
+        for x in self.m_list:
+            yield x
+
+    def sum(self) -> float:
+        assert self.is_filled()
+        result = 0.0
+        for f in self.range2():
+            result += f
+        return result
+
+    def len(self) -> int:
+        assert self.is_filled()
+        return self.m_capacity
+
+    def set2(self, index: int, v: float):
+        assert 0 <= index < self.len()
+        self.m_list[index] = v
 
     def increment2(self, i: int, delta: float):
         self.set2(i, self.float2(i) + delta)
@@ -176,14 +465,19 @@ class Floats:
         assert self.len() == other.len()
         assert self.is_filled()
         assert other.is_filled()
-        return float(np.dot(self.m_ndarray, other.m_ndarray))
+        result = 0.0
+        for me, ot in zip(self.range2(), other.range2()):
+            result += me * ot
+        return result
 
     def minus(self, other: Floats) -> Floats:
-        assert isinstance(other, Floats)
+        assert isinstance(other, FloatsList)
         assert self.len() == other.len()
-        assert self.is_filled()
-        assert other.is_filled()
-        return floats_from_ndarray(np.subtract(self.m_ndarray, other.m_ndarray))
+        result = floats_list_empty(self.len())
+        for me, ot in zip(self.range2(), other.range2()):
+            result.add(me - ot)
+        assert isinstance(result, Floats)
+        return result
 
     def pretty_string(self) -> str:
         ss = self.strings()
@@ -199,73 +493,130 @@ class Floats:
 
     def deep_copy(self) -> Floats:
         assert self.is_filled()
-        return floats_from_ndarray(np.copy(self.m_ndarray))
-
-    def squared(self) -> float:
-        return self.dot_product(self)
+        result = floats_list_empty(self.len())
+        for f in self.range2():
+            result.add(f)
+        assert isinstance(result, Floats)
+        return result
 
     def tidy_surrounder(self) -> bas.Interval:
         return self.extremes().tidy_surrounder()
 
     def min(self) -> float:
         assert self.is_filled()
-        return np.min(self.m_ndarray)
+        return np.min(self.m_list)
 
     def argmin(self) -> int:
         assert self.is_filled()
-        return int(np.argmin(self.m_ndarray))
+        return int(np.argmin(self.m_list))
 
     def max(self) -> float:
         assert self.is_filled()
-        return np.max(self.m_ndarray)
+        return np.max(self.m_list)
 
     def argmax(self) -> int:
-        return int(np.argmax(self.m_ndarray))
-
-    def tidy_extremes(self) -> Tuple[float, float]:
-        return self.tidy_surrounder().extremes()
+        return int(np.argmax(self.m_list))
 
     def plus(self, other: Floats) -> Floats:
+        assert isinstance(other, FloatsList)
         assert self.is_filled()
-        return floats_from_ndarray(np.add(self.m_ndarray, other.m_ndarray))
-
-    def subset(self, indexes: Ints) -> Floats:
-        assert self.is_filled()
-        result = floats_empty(indexes.len())
-        for i in indexes.range():
-            result.add(self.float2(i))
-        assert result.is_filled()
+        le = self.len()
+        assert le == other.len()
+        result = floats_list_empty(le)
+        for me, ot in zip(self.range2(), other.range2()):
+            result.add(me + ot)
+        assert isinstance(result, Floats)
         return result
 
     def indexes_of_sorted(self) -> Ints:
         assert self.is_filled()
-        return ints_from_ndarray(np.argsort(self.m_ndarray))
+        return indexes_of_sorted(self.m_list)
 
-    def without_leftmost_element(self) -> Floats:
-        return self.without_n_leftmost_elements(1)
+    def median_helper(self) -> float:
+        le = self.len()
+        assert le > 0
+        half_length = le // 2  # integer division, rounds down
+        assert isinstance(half_length, int)
+        if le % 2 == 0:
+            v0, v1 = self.kth_smallest_two_elements(half_length-1)
+            return (v0 + v1) / 2
+        else:
+            return self.kth_smallest_element(half_length)
 
-    def without_n_leftmost_elements(self, n: int) -> Floats:
-        assert n <= self.len()
-        result = floats_empty(self.len() - n)
-        for i in range(n, self.len()):
-            result.add(self.float2(i))
-        return result
+    def median_slow(self) -> float:
+        s = self.sorted()
+        h = self.len() // 2
+        if s.len() % 2 == 0:
+            return (s.float2(h-1) + s.float2(h)) / 2
+        else:
+            return s.float2(h)
 
     def median(self) -> float:
-        assert self.is_filled()
-        return float(np.median(self.m_ndarray))
+        result = self.median_helper()
+        print(f' remove this slow test')
+        assert bas.loosely_equals(result, self.median_slow())
+        return result
 
-    def sorted(self) -> Floats:
-        return self.subset(self.indexes_of_sorted())
+    def kth_smallest_two_elements(self, k: int) -> Tuple[float, float]:
+        assert 0 <= k < self.len() - 1
+
+        lower, pivot, higher = self.split_with_random_pivot()
+
+        if k + 1 < lower.len():
+            return lower.kth_smallest_two_elements(k)
+        elif k + 1 == lower.len():
+            return lower.max(), pivot
+        elif k == lower.len():
+            return pivot, higher.min()
+        else:
+            return higher.kth_smallest_two_elements(k - lower.len() - 1)
+
+    def kth_smallest_element(self, k: int) -> float:
+        assert 0 <= k < self.len()
+
+        lower, pivot, higher = self.split_with_random_pivot()
+
+        if k < lower.len():
+            return lower.kth_smallest_element(k)
+        elif k == lower.len():
+            return pivot
+        else:
+            return higher.kth_smallest_element(k - lower.len() - 1)
+
+    def split_with_random_pivot(self) -> Tuple[FloatsList, float, FloatsList]:
+        pivot_index = bas.int_random(self.len())
+        pivot = self.float2(pivot_index)
+        lower = []
+        higher = []
+
+        for i, f in enumerate(self.range2()):
+            if i != pivot_index:
+                if f < pivot:
+                    lower.append(f)
+                else:
+                    higher.append(f)
+
+        return floats_list_from_list(lower), pivot, floats_list_from_list(higher)
 
     def times_scalar(self, scale: float) -> Floats:
         assert self.is_filled()
-        return floats_from_ndarray(self.m_ndarray * scale)
+        result = floats_list_empty(self.len())
+        for f in self.range2():
+            result.add(f * scale)
+        assert isinstance(result, Floats)
+        return result
 
     def map_product_with(self, other: Floats) -> Floats:
+        assert isinstance(other, FloatsList)
         assert self.is_filled()
         assert other.is_filled()
-        return floats_from_ndarray(np.multiply(self.m_ndarray, other.m_ndarray))
+        le = self.len()
+        result = floats_list_empty(le)
+        assert le == other.len()
+        for me, ot in zip(self.range2(), other.range2()):
+            result.add(me * ot)
+        assert isinstance(result, Floats)
+        return result
 
     def is_loosely_constant(self) -> bool:
         if self.len() < 2:
@@ -283,45 +634,23 @@ class Floats:
         return self.sum() / self.len()
 
     def float2(self, i: int) -> float:
-        return self.m_ndarray[i]
-
-    def magnitude(self) -> float:
-        return math.sqrt(self.squared())
-
-    def minus_scalar(self, x: float) -> Floats:
-        return self.plus_scalar(-x)
+        return self.m_list[i]
 
     def plus_scalar(self, x: float) -> Floats:
         assert self.is_filled()
-        result = np.copy(self.m_ndarray)
-        result[:] += x
-        return floats_from_ndarray(result)
-
-    def sum_squares(self) -> float:
-        return self.dot_product(self)
-
-    def appended_with(self, other: Floats) -> Floats:
-        assert self.is_filled()
-        assert other.is_filled()
-        result = floats_empty(self.len() + other.len())
-        for x in self.range2():
-            result.add(x)
-        for x in other.range2():
-            result.add(x)
+        result = floats_list_empty(self.len())
+        for f in self.range2():
+            result.add(f + x)
+        assert isinstance(result, Floats)
         return result
 
     def add(self, f: float):
         assert isinstance(f, float)
-        assert self.m_num_filled < self.m_capacity
-        self.m_ndarray[self.m_num_filled] = f
-        self.m_num_filled += 1
+        assert self.num_filled() < self.m_capacity
+        self.m_list.append(f)
 
-    def list(self) -> List[float]:
-        assert self.is_filled()
-        result = []
-        for x in self.range2():
-            result.append(x)
-        return result
+    def num_filled(self) -> int:
+        return len(self.m_list)
 
 
 # class Floats:
@@ -1749,10 +2078,10 @@ def fmat_from_rows(n_cols: int, fsa: FloatsArray) -> Fmat:
     return Fmat(n_cols, fsa)
 
 
-def floats_all_constant(n: int, c: float) -> Floats:
+def floats_numpy_all_constant(n: int, c: float) -> FloatsNumpy:
     nda = np.empty(n)
     nda[:] = c
-    return floats_from_ndarray(nda)
+    return floats_numpy_from_ndarray(nda)
 
 
 def floats_all_zero(n: int) -> Floats:
@@ -2145,4 +2474,35 @@ def floats_array_from_list_of_lists(v2f: List[List[float]]) -> FloatsArray:
     result = floats_array_empty()
     for fs in v2f:
         result.add(floats_from_list2(fs))
+    return result
+
+
+use_numpy = True
+
+
+def floats_empty(capacity: int) -> Floats:
+    if use_numpy:
+        return floats_numpy_empty(capacity)
+    else:
+        return floats_list_empty(capacity)
+
+
+def floats_from_list2(li: List[float]) -> Floats:
+    if use_numpy:
+        return floats_numpy_from_list2(li)
+    else:
+        return floats_list_from_list(li)
+
+
+def floats_all_constant(n_elements: int, value: float) -> Floats:
+    if use_numpy:
+        return floats_numpy_all_constant(n_elements, value)
+    else:
+        return floats_list_all_constant(n_elements, value)
+
+
+def strings_all_constant(n_elements: int, s: str)->Strings:
+    result = strings_empty()
+    for i in range(n_elements):
+        result.add(s)
     return result
